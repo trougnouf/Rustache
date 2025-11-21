@@ -22,19 +22,22 @@ pub enum InputMode {
 }
 
 pub struct AppState {
+    // Data
     pub tasks: Vec<Task>,
     pub view_indices: Vec<usize>,
     pub calendars: Vec<CalendarListEntry>,
 
+    // State
     pub list_state: ListState,
     pub cal_state: ListState,
     pub active_focus: Focus,
     pub message: String,
     pub loading: bool,
 
+    // Input
     pub mode: InputMode,
     pub input_buffer: String,
-    pub cursor_position: usize, // <--- NEW: Track cursor index
+    pub cursor_position: usize,
 
     pub editing_index: Option<usize>,
 }
@@ -62,8 +65,7 @@ impl AppState {
         }
     }
 
-    // --- TEXT EDITING HELPERS ---
-
+    // --- TEXT HELPERS ---
     pub fn move_cursor_left(&mut self) {
         let cursor_moved_left = self.cursor_position.saturating_sub(1);
         self.cursor_position = self.clamp_cursor(cursor_moved_left);
@@ -83,13 +85,8 @@ impl AppState {
         if self.cursor_position != 0 {
             let current_index = self.cursor_position;
             let from_left_to_current_index = current_index - 1;
-
-            // Getting all characters before the selected character.
             let before_char_to_delete = self.input_buffer.chars().take(from_left_to_current_index);
-            // Getting all characters after selected character.
             let after_char_to_delete = self.input_buffer.chars().skip(current_index);
-
-            // Concatenate back
             self.input_buffer = before_char_to_delete.chain(after_char_to_delete).collect();
             self.move_cursor_left();
         }
@@ -100,13 +97,11 @@ impl AppState {
         self.cursor_position = 0;
     }
 
-    // Ensure cursor doesn't go past string length
     fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
         new_cursor_pos.clamp(0, self.input_buffer.chars().count())
     }
 
-    // --- VIEW LOGIC ---
-
+    // --- VIEW HELPERS ---
     pub fn recalculate_view(&mut self) {
         if self.mode == InputMode::Searching && !self.input_buffer.is_empty() {
             let query = self.input_buffer.to_lowercase();
@@ -137,8 +132,7 @@ impl AppState {
         None
     }
 
-    // --- LIST NAVIGATION ---
-    // (Existing navigation methods remain unchanged)
+    // --- NAVIGATION ---
     pub fn next(&mut self) {
         match self.active_focus {
             Focus::Main => {
@@ -319,10 +313,13 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                 Some(d) => format!(" ({})", d.format("%d/%m")),
                 None => "".to_string(),
             };
-            ListItem::new(Line::from(vec![Span::styled(
-                format!("{} {}{}", checkbox, t.summary, due_str),
-                style,
-            )]))
+
+            let indent = "  ".repeat(t.depth);
+
+            // --- FIX: Corrected format string (4 braces for 4 args) ---
+            let summary = format!("{}{} {}{}", indent, checkbox, t.summary, due_str);
+
+            ListItem::new(Line::from(vec![Span::styled(summary, style)]))
         })
         .collect();
 
@@ -351,8 +348,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         );
     f.render_stateful_widget(task_list, h_chunks[1], &mut state.list_state);
 
-    // Footer Input Area Logic
-    // We calculate where to put the cursor
+    // Footer
     let footer_area = v_chunks[1];
 
     match state.mode {
@@ -369,8 +365,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
 
             f.render_widget(input, footer_area);
 
-            // --- SET CURSOR VISIBILITY ---
-            // Calculate X: Box X + 1 (Border) + Prefix Len + Cursor Pos
             let cursor_x = footer_area.x + 1 + prefix.len() as u16 + state.cursor_position as u16;
             let cursor_y = footer_area.y + 1;
 
@@ -390,9 +384,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                         .title(" Status "),
                 );
 
-            let help_text = "Tab:View | /:Find | a:Add | e:Edit | d:Del | Space:Done";
-
-            let help = Paragraph::new(help_text)
+            let help = Paragraph::new("Tab:View | /:Find | a:Add | e:Edit | d:Del | >/<:Indent")
                 .style(Style::default().fg(Color::DarkGray))
                 .alignment(Alignment::Right)
                 .block(

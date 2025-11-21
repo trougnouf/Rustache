@@ -12,13 +12,16 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::{env, io, time::Duration};
 use tokio::sync::mpsc;
+
 enum Action {
     SwitchCalendar(String),
     ToggleTask(usize),
     CreateTask(String),
-    EditTask(usize, String), // Index, Smart String
+    EditTask(usize, String),
     DeleteTask(usize),
     ChangePriority(usize, i8),
+    IndentTask(usize),  // <--- NEW
+    OutdentTask(usize), // <--- NEW
     Quit,
 }
 
@@ -51,8 +54,6 @@ async fn main() -> Result<()> {
         Err(_) => {
             let args: Vec<String> = env::args().collect();
             if args.len() < 4 {
-                eprintln!("Usage: rustache <URL> <USER> <PASS>");
-                eprintln!("Or create config at ~/.config/rustache/config.toml");
                 return Ok(());
             }
             (args[1].clone(), args[2].clone(), args[3].clone(), None)
@@ -88,7 +89,7 @@ async fn main() -> Result<()> {
             }
             Err(e) => {
                 let _ = event_tx
-                    .send(AppEvent::Status(format!("Cal discovery warning: {}", e)))
+                    .send(AppEvent::Status(format!("Cal warning: {}", e)))
                     .await;
                 None
             }
@@ -101,9 +102,6 @@ async fn main() -> Result<()> {
                     .iter()
                     .find(|c| c.name == *def_name || c.href == *def_name)
                 {
-                    let _ = event_tx
-                        .send(AppEvent::Status(format!("Opening '{}'...", found.name)))
-                        .await;
                     client.set_calendar(&found.href);
                     selected = true;
                 }
@@ -117,16 +115,17 @@ async fn main() -> Result<()> {
         }
 
         let _ = event_tx
-            .send(AppEvent::Status("Fetching tasks...".to_string()))
+            .send(AppEvent::Status("Fetching...".to_string()))
             .await;
+
+        // --- INITIAL LOAD ---
         let mut local_tasks: Vec<Task> = match client.get_tasks().await {
-            Ok(t) => t,
+            Ok(t) => Task::organize_hierarchy(t), // SORT HIERARCHY HERE
             Err(e) => {
                 let _ = event_tx.send(AppEvent::Error(e)).await;
                 return;
             }
         };
-        local_tasks.sort();
         let _ = event_tx
             .send(AppEvent::TasksLoaded(local_tasks.clone()))
             .await;
@@ -142,8 +141,7 @@ async fn main() -> Result<()> {
                     client.set_calendar(&href);
                     match client.get_tasks().await {
                         Ok(t) => {
-                            local_tasks = t;
-                            local_tasks.sort();
+                            local_tasks = Task::organize_hierarchy(t); // SORT
                             let _ = event_tx
                                 .send(AppEvent::TasksLoaded(local_tasks.clone()))
                                 .await;
@@ -163,7 +161,7 @@ async fn main() -> Result<()> {
                     match client.create_task(&mut new_task).await {
                         Ok(_) => {
                             local_tasks.push(new_task);
-                            local_tasks.sort();
+                            local_tasks = Task::organize_hierarchy(local_tasks); // SORT
                             let _ = event_tx
                                 .send(AppEvent::TasksLoaded(local_tasks.clone()))
                                 .await;
@@ -180,7 +178,7 @@ async fn main() -> Result<()> {
                 Action::EditTask(index, smart_string) => {
                     if index < local_tasks.len() {
                         let task = &mut local_tasks[index];
-                        task.apply_smart_input(&smart_string); // Apply new text
+                        task.apply_smart_input(&smart_string);
                         let _ = event_tx
                             .send(AppEvent::Status("Updating...".to_string()))
                             .await;
@@ -189,7 +187,7 @@ async fn main() -> Result<()> {
                         match client.update_task(&mut task_copy).await {
                             Ok(_) => {
                                 local_tasks[index] = task_copy;
-                                local_tasks.sort();
+                                local_tasks = Task::organize_hierarchy(local_tasks); // SORT
                                 let _ = event_tx
                                     .send(AppEvent::TasksLoaded(local_tasks.clone()))
                                     .await;
@@ -215,7 +213,7 @@ async fn main() -> Result<()> {
                         match client.update_task(&mut task_copy).await {
                             Ok(_) => {
                                 local_tasks[index] = task_copy.clone();
-                                local_tasks.sort();
+                                local_tasks = Task::organize_hierarchy(local_tasks); // SORT
                                 let _ = event_tx
                                     .send(AppEvent::TasksLoaded(local_tasks.clone()))
                                     .await;
@@ -241,6 +239,7 @@ async fn main() -> Result<()> {
                         match client.delete_task(&task).await {
                             Ok(_) => {
                                 local_tasks.remove(index);
+                                local_tasks = Task::organize_hierarchy(local_tasks);
                                 let _ = event_tx
                                     .send(AppEvent::TasksLoaded(local_tasks.clone()))
                                     .await;
@@ -284,7 +283,7 @@ async fn main() -> Result<()> {
                             match client.update_task(&mut task_copy).await {
                                 Ok(_) => {
                                     local_tasks[index] = task_copy;
-                                    local_tasks.sort();
+                                    local_tasks = Task::organize_hierarchy(local_tasks); // SORT
                                     let _ = event_tx
                                         .send(AppEvent::TasksLoaded(local_tasks.clone()))
                                         .await;
@@ -299,10 +298,73 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
+
+                // --- NEW HIERARCHY ACTIONS ---
+                Action::IndentTask(index) => {
+                    // Needs a task above it to be the parent
+                    if index > 0 && index < local_tasks.len() {
+                        // Prevent indenting under its own child (simple check)
+                        let parent_candidate = local_tasks[index - 1].uid.clone();
+                        if local_tasks[index].parent_uid != Some(parent_candidate.clone()) {
+                            let task = &mut local_tasks[index];
+                            task.parent_uid = Some(parent_candidate);
+                            let _ = event_tx
+                                .send(AppEvent::Status("Indenting...".to_string()))
+                                .await;
+
+                            let mut task_copy = task.clone();
+                            match client.update_task(&mut task_copy).await {
+                                Ok(_) => {
+                                    local_tasks[index] = task_copy;
+                                    local_tasks = Task::organize_hierarchy(local_tasks);
+                                    let _ = event_tx
+                                        .send(AppEvent::TasksLoaded(local_tasks.clone()))
+                                        .await;
+                                    let _ = event_tx
+                                        .send(AppEvent::Status("Indented.".to_string()))
+                                        .await;
+                                }
+                                Err(e) => {
+                                    let _ = event_tx.send(AppEvent::Error(e)).await;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Action::OutdentTask(index) => {
+                    if index < local_tasks.len() {
+                        let task = &mut local_tasks[index];
+                        if task.parent_uid.is_some() {
+                            task.parent_uid = None;
+                            let _ = event_tx
+                                .send(AppEvent::Status("Outdenting...".to_string()))
+                                .await;
+
+                            let mut task_copy = task.clone();
+                            match client.update_task(&mut task_copy).await {
+                                Ok(_) => {
+                                    local_tasks[index] = task_copy;
+                                    local_tasks = Task::organize_hierarchy(local_tasks);
+                                    let _ = event_tx
+                                        .send(AppEvent::TasksLoaded(local_tasks.clone()))
+                                        .await;
+                                    let _ = event_tx
+                                        .send(AppEvent::Status("Outdented.".to_string()))
+                                        .await;
+                                }
+                                Err(e) => {
+                                    let _ = event_tx.send(AppEvent::Error(e)).await;
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     });
 
+    // UI Loop
     loop {
         terminal.draw(|f| draw(f, &mut app_state))?;
 
@@ -340,31 +402,41 @@ async fn main() -> Result<()> {
                     MouseEventKind::ScrollUp => app_state.previous(),
                     _ => {}
                 },
-                // ... inside input loop ...
                 Event::Key(key) => {
                     match app_state.mode {
-                        // --- EDITING / CREATING ---
-                        InputMode::Creating | InputMode::Editing => match key.code {
+                        InputMode::Creating => match key.code {
                             KeyCode::Enter => {
                                 if !app_state.input_buffer.is_empty() {
-                                    let text = app_state.input_buffer.clone();
-
-                                    if app_state.mode == InputMode::Creating {
-                                        let _ = action_tx.send(Action::CreateTask(text)).await;
-                                    } else {
-                                        if let Some(idx) = app_state.editing_index {
-                                            let _ =
-                                                action_tx.send(Action::EditTask(idx, text)).await;
-                                        }
-                                    }
+                                    let summary = app_state.input_buffer.clone();
+                                    let _ = action_tx.send(Action::CreateTask(summary)).await;
+                                    app_state.input_buffer.clear();
+                                    app_state.mode = InputMode::Normal;
                                 }
-                                app_state.reset_input(); // Reset buffer & cursor
+                            }
+                            KeyCode::Esc => {
+                                app_state.mode = InputMode::Normal;
+                                app_state.input_buffer.clear();
+                            }
+                            KeyCode::Char(c) => app_state.input_buffer.push(c),
+                            KeyCode::Backspace => {
+                                app_state.input_buffer.pop();
+                            }
+                            _ => {}
+                        },
+
+                        InputMode::Editing => match key.code {
+                            KeyCode::Enter => {
+                                if let Some(idx) = app_state.editing_index {
+                                    let new_text = app_state.input_buffer.clone();
+                                    let _ = action_tx.send(Action::EditTask(idx, new_text)).await;
+                                }
+                                app_state.input_buffer.clear();
                                 app_state.editing_index = None;
                                 app_state.mode = InputMode::Normal;
                             }
                             KeyCode::Esc => {
                                 app_state.mode = InputMode::Normal;
-                                app_state.reset_input();
+                                app_state.input_buffer.clear();
                                 app_state.editing_index = None;
                             }
                             KeyCode::Left => app_state.move_cursor_left(),
@@ -374,7 +446,6 @@ async fn main() -> Result<()> {
                             _ => {}
                         },
 
-                        // --- SEARCHING ---
                         InputMode::Searching => match key.code {
                             KeyCode::Enter | KeyCode::Esc => {
                                 app_state.mode = InputMode::Normal;
@@ -392,9 +463,7 @@ async fn main() -> Result<()> {
                             _ => {}
                         },
 
-                        // --- NORMAL ---
                         InputMode::Normal => match key.code {
-                            // ... (Normal mode handling is mostly unchanged, but careful with init) ...
                             KeyCode::Char('q') => {
                                 let _ = action_tx.send(Action::Quit).await;
                                 break;
@@ -406,17 +475,10 @@ async fn main() -> Result<()> {
                                 app_state.recalculate_view();
                             }
                             KeyCode::Esc => {
-                                app_state.reset_input(); // Clear search
+                                app_state.reset_input();
                                 app_state.recalculate_view();
                             }
                             KeyCode::Tab => app_state.toggle_focus(),
-
-                            // ... (Enter, j/k, PageUp/Down stay same) ...
-                            KeyCode::Down | KeyCode::Char('j') => app_state.next(),
-                            KeyCode::Up | KeyCode::Char('k') => app_state.previous(),
-                            KeyCode::PageDown => app_state.jump_forward(10),
-                            KeyCode::PageUp => app_state.jump_backward(10),
-
                             KeyCode::Enter => {
                                 if app_state.active_focus == Focus::Sidebar {
                                     if let Some(idx) = app_state.cal_state.selected() {
@@ -429,30 +491,28 @@ async fn main() -> Result<()> {
                                     }
                                 }
                             }
-
                             KeyCode::Char('a') => {
                                 app_state.mode = InputMode::Creating;
-                                app_state.reset_input(); // Ensure clean slate
+                                app_state.reset_input();
                                 app_state.message = "Example: Buy Milk @tomorrow !1".to_string();
                             }
-
                             KeyCode::Char('e') => {
                                 if app_state.active_focus == Focus::Main {
                                     if let Some(idx) = app_state.get_selected_master_index() {
                                         let task = &app_state.tasks[idx];
                                         app_state.mode = InputMode::Editing;
-
-                                        // Load text and move cursor to end
                                         let text = task.to_smart_string();
                                         app_state.input_buffer = text.clone();
-                                        app_state.cursor_position = text.chars().count(); // Set cursor to end
-
+                                        app_state.cursor_position = text.chars().count();
                                         app_state.editing_index = Some(idx);
                                     }
                                 }
                             }
+                            KeyCode::Down | KeyCode::Char('j') => app_state.next(),
+                            KeyCode::Up | KeyCode::Char('k') => app_state.previous(),
+                            KeyCode::PageDown => app_state.jump_forward(10),
+                            KeyCode::PageUp => app_state.jump_backward(10),
 
-                            // ... (Toggle, Delete, Priority shortcuts stay same) ...
                             KeyCode::Char(' ') => {
                                 if app_state.active_focus == Focus::Main {
                                     if let Some(idx) = app_state.get_selected_master_index() {
@@ -485,6 +545,23 @@ async fn main() -> Result<()> {
                                     }
                                 }
                             }
+                            // --- NEW INDENT/OUTDENT KEYS ---
+                            // > (Shift + .)
+                            KeyCode::Char('.') | KeyCode::Char('>') => {
+                                if app_state.active_focus == Focus::Main {
+                                    if let Some(idx) = app_state.get_selected_master_index() {
+                                        let _ = action_tx.send(Action::IndentTask(idx)).await;
+                                    }
+                                }
+                            }
+                            // < (Shift + ,)
+                            KeyCode::Char(',') | KeyCode::Char('<') => {
+                                if app_state.active_focus == Focus::Main {
+                                    if let Some(idx) = app_state.get_selected_master_index() {
+                                        let _ = action_tx.send(Action::OutdentTask(idx)).await;
+                                    }
+                                }
+                            }
                             _ => {}
                         },
                     }
@@ -493,6 +570,7 @@ async fn main() -> Result<()> {
             }
         }
     }
+
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
