@@ -4,10 +4,9 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap}, // Added Wrap
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 
-// ... Focus, InputMode, AppState structs/impls remain exactly the same ...
 #[derive(PartialEq)]
 pub enum Focus {
     Sidebar,
@@ -20,6 +19,7 @@ pub enum InputMode {
     Creating,
     Searching,
     Editing,
+    EditingDescription,
 }
 
 pub struct AppState {
@@ -38,7 +38,6 @@ pub struct AppState {
 }
 
 impl AppState {
-    // ... same methods as before ...
     pub fn new() -> Self {
         let mut l_state = ListState::default();
         l_state.select(Some(0));
@@ -60,7 +59,6 @@ impl AppState {
         }
     }
 
-    // ... copy helper methods (move_cursor, etc) from previous version ...
     pub fn move_cursor_left(&mut self) {
         let cursor_moved_left = self.cursor_position.saturating_sub(1);
         self.cursor_position = self.clamp_cursor(cursor_moved_left);
@@ -243,27 +241,21 @@ impl AppState {
 }
 
 pub fn draw(f: &mut Frame, state: &mut AppState) {
-    // Layout:
-    // Top: Body
-    // Bottom: Footer
     let v_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
         .split(f.area());
 
-    // Body: Sidebar | Main Area
     let h_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
         .split(v_chunks[0]);
 
-    // Main Area: Task List | Details Pane (Vertical split)
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
         .split(h_chunks[1]);
 
-    // --- SIDEBAR ---
     let cal_items: Vec<ListItem> = state
         .calendars
         .iter()
@@ -288,7 +280,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         );
     f.render_stateful_widget(sidebar, h_chunks[0], &mut state.cal_state);
 
-    // --- MAIN: LIST ---
     let task_items: Vec<ListItem> = state
         .view_indices
         .iter()
@@ -320,7 +311,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
     } else {
         format!(" Tasks ({}) ", state.view_indices.len())
     };
-
     let task_list = List::new(task_items)
         .block(
             Block::default()
@@ -335,7 +325,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         );
     f.render_stateful_widget(task_list, main_chunks[0], &mut state.list_state);
 
-    // --- MAIN: DETAILS ---
     let details_text = if let Some(idx) = state.get_selected_master_index() {
         let task = &state.tasks[idx];
         if task.description.is_empty() {
@@ -350,23 +339,26 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
     let details = Paragraph::new(details_text)
         .wrap(Wrap { trim: true })
         .block(Block::default().borders(Borders::ALL).title(" Details "));
-
     f.render_widget(details, main_chunks[1]);
 
-    // --- FOOTER ---
     let footer_area = v_chunks[1];
     match state.mode {
-        InputMode::Creating | InputMode::Editing | InputMode::Searching => {
+        InputMode::Creating
+        | InputMode::Editing
+        | InputMode::Searching
+        | InputMode::EditingDescription => {
             let (title, prefix, color) = match state.mode {
                 InputMode::Searching => (" Search ", "/ ", Color::Green),
-                InputMode::Editing => (" Edit Task ", "> ", Color::Magenta),
+                InputMode::Editing => (" Edit Title ", "> ", Color::Magenta),
+                InputMode::EditingDescription => (" Edit Description ", "📝 ", Color::Blue),
                 _ => (" Create Task ", "> ", Color::Yellow),
             };
             let input = Paragraph::new(format!("{}{}", prefix, state.input_buffer))
                 .style(Style::default().fg(color))
                 .block(Block::default().borders(Borders::ALL).title(title));
             f.render_widget(input, footer_area);
-            let cursor_x = footer_area.x + 1 + prefix.len() as u16 + state.cursor_position as u16;
+            let cursor_x =
+                footer_area.x + 1 + prefix.chars().count() as u16 + state.cursor_position as u16;
             let cursor_y = footer_area.y + 1;
             f.set_cursor_position((cursor_x, cursor_y));
         }
@@ -382,7 +374,8 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                         .borders(Borders::LEFT | Borders::TOP | Borders::BOTTOM)
                         .title(" Status "),
                 );
-            let help = Paragraph::new("Tab:View | /:Find | a:Add | e:Edit | d:Del | >/<:Indent")
+            let help_text = "Tab:View | /:Find | a:Add | e:Title | E:Desc | d:Del";
+            let help = Paragraph::new(help_text)
                 .style(Style::default().fg(Color::DarkGray))
                 .alignment(Alignment::Right)
                 .block(

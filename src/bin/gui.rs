@@ -6,7 +6,7 @@ use iced::widget::{
     Rule, button, checkbox, column, container, horizontal_space, row, scrollable, text, text_input,
 };
 use iced::{Background, Color, Element, Length, Padding, Task, Theme};
-use std::collections::HashSet; // <--- Import
+use std::collections::HashSet;
 use std::sync::OnceLock;
 use tokio::runtime::Runtime;
 
@@ -29,10 +29,10 @@ struct RustacheGui {
     active_cal_href: Option<String>,
 
     input_value: String,
+    description_value: String, // <--- NEW
     search_value: String,
     editing_uid: Option<String>,
 
-    // Track which tasks have details expanded
     expanded_tasks: HashSet<String>,
 
     client: Option<RustyClient>,
@@ -47,9 +47,10 @@ impl Default for RustacheGui {
             calendars: vec![],
             active_cal_href: None,
             input_value: String::new(),
+            description_value: String::new(),
             search_value: String::new(),
             editing_uid: None,
-            expanded_tasks: HashSet::new(), // Init
+            expanded_tasks: HashSet::new(),
             client: None,
             loading: true,
             error_msg: None,
@@ -60,17 +61,18 @@ impl Default for RustacheGui {
 #[derive(Debug, Clone)]
 enum Message {
     InputChanged(String),
+    DescriptionChanged(String), // <--- NEW
     SearchChanged(String),
     SubmitTask,
     ToggleTask(usize, bool),
     SelectCalendar(String),
     DeleteTask(usize),
     EditTaskStart(usize),
+    CancelEdit, // <--- NEW
     ChangePriority(usize, i8),
     IndentTask(usize),
     OutdentTask(usize),
-
-    ToggleDetails(String), // <--- NEW
+    ToggleDetails(String),
 
     Loaded(
         Result<
@@ -98,7 +100,6 @@ impl RustacheGui {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            // --- NEW: TOGGLE DETAILS ---
             Message::ToggleDetails(uid) => {
                 if self.expanded_tasks.contains(&uid) {
                     self.expanded_tasks.remove(&uid);
@@ -108,7 +109,6 @@ impl RustacheGui {
                 Task::none()
             }
 
-            // ... existing logic (Loaded, SyncSaved, TasksRefreshed) ...
             Message::Loaded(Ok((client, cals, tasks, active))) => {
                 self.client = Some(client);
                 self.calendars = cals;
@@ -163,6 +163,10 @@ impl RustacheGui {
                 self.input_value = value;
                 Task::none()
             }
+            Message::DescriptionChanged(value) => {
+                self.description_value = value;
+                Task::none()
+            }
             Message::SearchChanged(val) => {
                 self.search_value = val;
                 Task::none()
@@ -171,8 +175,16 @@ impl RustacheGui {
             Message::EditTaskStart(index) => {
                 if let Some(task) = self.tasks.get(index) {
                     self.input_value = task.to_smart_string();
+                    self.description_value = task.description.clone();
                     self.editing_uid = Some(task.uid.clone());
                 }
+                Task::none()
+            }
+
+            Message::CancelEdit => {
+                self.input_value.clear();
+                self.description_value.clear();
+                self.editing_uid = None;
                 Task::none()
             }
 
@@ -182,8 +194,10 @@ impl RustacheGui {
                         if let Some(index) = self.tasks.iter().position(|t| t.uid == *edit_uid) {
                             if let Some(task) = self.tasks.get_mut(index) {
                                 task.apply_smart_input(&self.input_value);
+                                task.description = self.description_value.clone();
                                 let task_copy = task.clone();
                                 self.input_value.clear();
+                                self.description_value.clear();
                                 self.editing_uid = None;
                                 if let Some(client) = &self.client {
                                     return Task::perform(
@@ -349,16 +363,51 @@ impl RustacheGui {
             .on_input(Message::SearchChanged)
             .padding(5)
             .size(16);
+
+        // --- DYNAMIC FOOTER ---
         let input_placeholder = if self.editing_uid.is_some() {
-            "Editing task..."
+            "Edit Title (Smart tags allowed)..."
         } else {
             "Add a task (Buy Milk !1 @tomorrow)..."
         };
-        let input = text_input(input_placeholder, &self.input_value)
+        let input_title = text_input(input_placeholder, &self.input_value)
             .on_input(Message::InputChanged)
             .on_submit(Message::SubmitTask)
             .padding(10)
             .size(20);
+
+        let footer_content: Element<_> = if self.editing_uid.is_some() {
+            let input_desc = text_input("Description / Notes...", &self.description_value)
+                .on_input(Message::DescriptionChanged)
+                .on_submit(Message::SubmitTask)
+                .padding(10)
+                .size(16);
+
+            let cancel_btn = button(text("Cancel").size(16))
+                .style(button::secondary)
+                .on_press(Message::CancelEdit);
+            let save_btn = button(text("Save Changes").size(16))
+                .style(button::primary)
+                .on_press(Message::SubmitTask);
+
+            column![
+                row![
+                    text("Editing Task")
+                        .size(14)
+                        .color(Color::from_rgb(0.7, 0.7, 1.0)),
+                    horizontal_space(),
+                    cancel_btn,
+                    save_btn
+                ]
+                .spacing(10),
+                input_title,
+                input_desc
+            ]
+            .spacing(5)
+            .into()
+        } else {
+            column![input_title].into()
+        };
 
         let is_searching = !self.search_value.is_empty();
         let filtered_tasks: Vec<(usize, &TodoTask)> = self
@@ -400,7 +449,6 @@ impl RustacheGui {
                     };
 
                     let btn_style = button::secondary;
-                    // Info Button logic
                     let has_desc = !task.description.is_empty();
                     let is_expanded = self.expanded_tasks.contains(&task.uid);
                     let info_btn = if has_desc {
@@ -413,7 +461,7 @@ impl RustacheGui {
                             .padding(5)
                             .on_press(Message::ToggleDetails(task.uid.clone()))
                     } else {
-                        button(text(" ").size(12)).style(button::text) // Invisible placeholder
+                        button(text(" ").size(12)).style(button::text)
                     };
 
                     let actions = row![
@@ -456,12 +504,10 @@ impl RustacheGui {
                     .spacing(15)
                     .align_y(iced::Alignment::Center);
 
-                    // Render Description if expanded
                     let content: Element<_> = if is_expanded {
                         let desc_text = text(&task.description)
                             .size(14)
                             .color(Color::from_rgb(0.7, 0.7, 0.7));
-                        // Add extra indent for description
                         let desc_row = row![
                             horizontal_space().width(Length::Fixed(indent_size as f32 + 30.0)),
                             desc_text
@@ -492,7 +538,7 @@ impl RustacheGui {
                 search_input.width(200)
             ]
             .align_y(iced::Alignment::Center),
-            input,
+            footer_content,
             scrollable(tasks_view)
         ]
         .spacing(20)

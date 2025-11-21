@@ -8,7 +8,7 @@ use uuid::Uuid;
 pub struct Task {
     pub uid: String,
     pub summary: String,
-    pub description: String, // <--- NEW FIELD
+    pub description: String, // <--- NEW
     pub completed: bool,
     pub due: Option<DateTime<Utc>>,
     pub priority: u8,
@@ -19,7 +19,6 @@ pub struct Task {
 }
 
 impl Task {
-    // ... apply_smart_input (unchanged) ...
     pub fn apply_smart_input(&mut self, input: &str) {
         let mut summary_words = Vec::new();
         self.priority = 0;
@@ -56,7 +55,6 @@ impl Task {
         self.summary = summary_words.join(" ");
     }
 
-    // ... to_smart_string (unchanged) ...
     pub fn to_smart_string(&self) -> String {
         let mut s = self.summary.clone();
         if self.priority > 0 {
@@ -72,7 +70,7 @@ impl Task {
         let mut task = Self {
             uid: Uuid::new_v4().to_string(),
             summary: String::new(),
-            description: String::new(), // <--- Init Empty
+            description: String::new(),
             completed: false,
             due: None,
             priority: 0,
@@ -85,7 +83,6 @@ impl Task {
         task
     }
 
-    // ... organize_hierarchy (unchanged) ...
     pub fn organize_hierarchy(mut tasks: Vec<Task>) -> Vec<Task> {
         let present_uids: HashSet<String> = tasks.iter().map(|t| t.uid.clone()).collect();
         let mut children_map: HashMap<String, Vec<Task>> = HashMap::new();
@@ -137,7 +134,7 @@ impl Task {
         let mut todo = Todo::new();
         todo.uid(&self.uid);
         todo.summary(&self.summary);
-        // --- SAVE DESCRIPTION ---
+
         if !self.description.is_empty() {
             todo.description(&self.description);
         }
@@ -183,9 +180,7 @@ impl Task {
             .ok_or("No VTODO found in ICS")?;
 
         let summary = todo.get_summary().unwrap_or("No Title").to_string();
-        // --- LOAD DESCRIPTION ---
         let description = todo.get_description().unwrap_or("").to_string();
-
         let uid = todo.get_uid().unwrap_or_default().to_string();
 
         let completed = todo
@@ -237,7 +232,6 @@ impl Task {
     }
 }
 
-// ... Ord/PartialOrd (unchanged) ...
 impl Ord for Task {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.completed != other.completed {
