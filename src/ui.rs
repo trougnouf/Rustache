@@ -34,7 +34,8 @@ pub struct AppState {
 
     pub mode: InputMode,
     pub input_buffer: String,
-    // Track which task we are editing
+    pub cursor_position: usize, // <--- NEW: Track cursor index
+
     pub editing_index: Option<usize>,
 }
 
@@ -56,9 +57,55 @@ impl AppState {
             loading: true,
             mode: InputMode::Normal,
             input_buffer: String::new(),
+            cursor_position: 0,
             editing_index: None,
         }
     }
+
+    // --- TEXT EDITING HELPERS ---
+
+    pub fn move_cursor_left(&mut self) {
+        let cursor_moved_left = self.cursor_position.saturating_sub(1);
+        self.cursor_position = self.clamp_cursor(cursor_moved_left);
+    }
+
+    pub fn move_cursor_right(&mut self) {
+        let cursor_moved_right = self.cursor_position.saturating_add(1);
+        self.cursor_position = self.clamp_cursor(cursor_moved_right);
+    }
+
+    pub fn enter_char(&mut self, new_char: char) {
+        self.input_buffer.insert(self.cursor_position, new_char);
+        self.move_cursor_right();
+    }
+
+    pub fn delete_char(&mut self) {
+        if self.cursor_position != 0 {
+            let current_index = self.cursor_position;
+            let from_left_to_current_index = current_index - 1;
+
+            // Getting all characters before the selected character.
+            let before_char_to_delete = self.input_buffer.chars().take(from_left_to_current_index);
+            // Getting all characters after selected character.
+            let after_char_to_delete = self.input_buffer.chars().skip(current_index);
+
+            // Concatenate back
+            self.input_buffer = before_char_to_delete.chain(after_char_to_delete).collect();
+            self.move_cursor_left();
+        }
+    }
+
+    pub fn reset_input(&mut self) {
+        self.input_buffer.clear();
+        self.cursor_position = 0;
+    }
+
+    // Ensure cursor doesn't go past string length
+    fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
+        new_cursor_pos.clamp(0, self.input_buffer.chars().count())
+    }
+
+    // --- VIEW LOGIC ---
 
     pub fn recalculate_view(&mut self) {
         if self.mode == InputMode::Searching && !self.input_buffer.is_empty() {
@@ -90,6 +137,8 @@ impl AppState {
         None
     }
 
+    // --- LIST NAVIGATION ---
+    // (Existing navigation methods remain unchanged)
     pub fn next(&mut self) {
         match self.active_focus {
             Focus::Main => {
@@ -302,29 +351,30 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         );
     f.render_stateful_widget(task_list, h_chunks[1], &mut state.list_state);
 
-    // Footer
+    // Footer Input Area Logic
+    // We calculate where to put the cursor
+    let footer_area = v_chunks[1];
+
     match state.mode {
-        InputMode::Creating => {
-            let input = Paragraph::new(format!("> {}_", state.input_buffer))
-                .style(Style::default().fg(Color::Yellow))
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(" Create Task "),
-                );
-            f.render_widget(input, v_chunks[1]);
-        }
-        InputMode::Editing => {
-            let input = Paragraph::new(format!("> {}_", state.input_buffer))
-                .style(Style::default().fg(Color::Magenta))
-                .block(Block::default().borders(Borders::ALL).title(" Edit Task "));
-            f.render_widget(input, v_chunks[1]);
-        }
-        InputMode::Searching => {
-            let input = Paragraph::new(format!("/ {}_", state.input_buffer))
-                .style(Style::default().fg(Color::Green))
-                .block(Block::default().borders(Borders::ALL).title(" Search "));
-            f.render_widget(input, v_chunks[1]);
+        InputMode::Creating | InputMode::Editing | InputMode::Searching => {
+            let (title, prefix, color) = match state.mode {
+                InputMode::Searching => (" Search ", "/ ", Color::Green),
+                InputMode::Editing => (" Edit Task ", "> ", Color::Magenta),
+                _ => (" Create Task ", "> ", Color::Yellow),
+            };
+
+            let input = Paragraph::new(format!("{}{}", prefix, state.input_buffer))
+                .style(Style::default().fg(color))
+                .block(Block::default().borders(Borders::ALL).title(title));
+
+            f.render_widget(input, footer_area);
+
+            // --- SET CURSOR VISIBILITY ---
+            // Calculate X: Box X + 1 (Border) + Prefix Len + Cursor Pos
+            let cursor_x = footer_area.x + 1 + prefix.len() as u16 + state.cursor_position as u16;
+            let cursor_y = footer_area.y + 1;
+
+            f.set_cursor(cursor_x, cursor_y);
         }
         InputMode::Normal => {
             let f_chunks = Layout::default()
@@ -340,7 +390,9 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                         .title(" Status "),
                 );
 
-            let help = Paragraph::new("Tab:View | /:Find | a:Add | e:Edit | Space:Done")
+            let help_text = "Tab:View | /:Find | a:Add | e:Edit | d:Del | Space:Done";
+
+            let help = Paragraph::new(help_text)
                 .style(Style::default().fg(Color::DarkGray))
                 .alignment(Alignment::Right)
                 .block(
