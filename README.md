@@ -1,54 +1,75 @@
 # Rustache
 
-A simple, elegant, and lightweight CalDAV task manager for the terminal, written in Rust.
+**Rustache** is a simple, elegant, and lightweight CalDAV task manager, written in Rust.
+
+It features both a lightning-fast **TUI (Terminal UI)** for keyboard warriors and a modern **GUI (Graphical UI)** for desktop integration.
 
 ## Features
-- **Vim-like Navigation:** `j`/`k` to move, `d` to delete, `Space` to toggle.
-- **Smart Input:** Add tasks naturally: `Buy Milk !1 @tomorrow`.
-- **Syncs Everywhere:** Fully compatible with CalDAV servers (Currently tested with Radicale).
-- **Offline-First UI:** Optimistic UI updates for instant feedback.
-- **Multiple Calendars:** Sidebar support to switch between task lists.
+
+*   **Dual Interface:** Run it in your terminal (`rustache`) or as a windowed app (`rustache-gui`).
+*   **Smart Input:** Add tasks naturally: `Buy Milk !1 @tomorrow` sets High Priority and Due Date automatically.
+*   **Syncs Everywhere:** Fully compatible with standard CalDAV servers (Radicale, Nextcloud, iCloud, etc.).
+*   **Hierarchy Support:** Create sub-tasks and organize nested lists easily.
+*   **Multiple Calendars:** Seamlessly switch between "Work", "Personal", and other lists.
+*   **Offline-First:** Optimistic UI updates mean you never wait for the server.
 
 ## Installation
 
-1.  **Build from source:**
-    ```bash
-    cargo install --path .
-    ```
+### 1. Build from Source
+Ensure you have Rust installed.
 
-2.  **Run:**
-    ```bash
-    rustache
-    ```
+```bash
+# Install the TUI (Default)
+cargo install --path .
+
+# Install the GUI (Optional)
+cargo install --path . --bin gui --no-default-features --features gui
+```
+
+### 2. Run
+```bash
+# Run TUI
+rustache
+
+# Run GUI
+rustache-gui
+```
 
 ## Configuration
 
-Create a config file at `~/.config/rustache/config.toml` (Linux) or `~/Library/Application Support/com.rustache.rustache/config.toml` (Mac):
+Create a config file at:
+*   **Linux:** `~/.config/rustache/config.toml`
+*   **Mac:** `~/Library/Application Support/com.rustache.rustache/config.toml`
 
 ```toml
-url = "https://localhost:5232/trougnouf/"
+url = "https://caldav.example.com/remote.php/dav/calendars/user/"
 username = "myuser"
 password = "mypassword"
-default_calendar = "todo" # Optional: Auto-selects this list on startup
+default_calendar = "Personal" # Optional: Auto-selects this list on startup
 ```
 
-## Keybindings
+## TUI Keybindings
 
-| Key | Action |
-| :--- | :--- |
-| `a` | **Add Task** (Type name, press Enter) |
-| `Space` | **Toggle** Completion |
-| `d` | **Delete** Task |
-| `+` / `-` | Increase / Decrease **Priority** |
-| `Tab` | Switch focus (Tasks <-> Calendars) |
-| `Enter` | Select Calendar (in Sidebar) |
-| `j` / `k` | Move Down / Up |
-| `q` | Quit |
+| Context | Key | Action |
+| :--- | :--- | :--- |
+| **Global** | `Tab` | Switch focus (Tasks ↔ Calendars) |
+| | `q` | Quit |
+| **Task List** | `j` / `k` | Move Down / Up |
+| | `Space` | **Toggle** Completion |
+| | `a` | **Add** Task (Type name, press Enter) |
+| | `e` | **Edit** Task |
+| | `d` | **Delete** Task |
+| | `/` | **Search** / Filter Tasks |
+| | `+` / `-` | Increase / Decrease **Priority** |
+| | `>` / `<` | **Indent** / **Outdent** (Create Sub-tasks) |
+| **Sidebar** | `Enter` | Select Calendar |
 
 ## Input Syntax
-When adding a task (`a`), you can use shortcuts:
-- `!1` sets High Priority (1-9)
-- `@tomorrow`, `@today`, or `@2025-12-31` sets the Due Date.
+When adding (`a`) or editing (`e`) a task, you can use shortcuts directly in the text:
+
+*   `!1` to `!9`: Sets Priority (1 is High, 9 is Low).
+*   `@tomorrow`, `@today`: Sets Due Date relative to now.
+*   `@2025-12-31`: Sets specific Due Date (YYYY-MM-DD).
 
 ## License
 GPL3
