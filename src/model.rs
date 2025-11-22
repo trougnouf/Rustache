@@ -434,3 +434,102 @@ pub struct CalendarListEntry {
     pub href: String,
     pub color: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, TimeZone};
+
+    #[test]
+    fn test_smart_input_priority() {
+        let t = Task::new("Buy Milk !1");
+        assert_eq!(t.summary, "Buy Milk");
+        assert_eq!(t.priority, 1);
+
+        let t2 = Task::new("Low priority !9");
+        assert_eq!(t2.priority, 9);
+    }
+
+    #[test]
+    fn test_smart_input_date_absolute() {
+        let t = Task::new("Tax Day @2025-04-15");
+        assert_eq!(t.summary, "Tax Day");
+
+        let expected = Utc.with_ymd_and_hms(2025, 4, 15, 23, 59, 59).unwrap();
+        assert_eq!(t.due, Some(expected));
+    }
+
+    #[test]
+    fn test_smart_input_recurrence() {
+        let t = Task::new("Gym @daily");
+        assert_eq!(t.rrule, Some("FREQ=DAILY".to_string()));
+
+        let t2 = Task::new("Meeting @weekly");
+        assert_eq!(t2.rrule, Some("FREQ=WEEKLY".to_string()));
+
+        let t3 = Task::new("Review @every 2 weeks");
+        assert_eq!(t3.rrule, Some("FREQ=WEEKLY;INTERVAL=2".to_string()));
+    }
+
+    #[test]
+    fn test_recurrence_respawn() {
+        // Create a task due "Yesterday" that repeats daily
+        let yesterday = Utc::now() - Duration::days(1);
+        let mut t = Task::new("Daily Task");
+        t.due = Some(yesterday);
+        t.rrule = Some("FREQ=DAILY".to_string());
+
+        // Respawn should give us a task due "Today" (or strictly +1 day from due)
+        let next = t.respawn().expect("Should respawn");
+
+        // Calculate expected (Yesterday + 1 day)
+        // Note: rrule calculation is precise, so we verify it moved forward
+        assert!(next.due > t.due);
+        assert_eq!(next.summary, "Daily Task");
+        assert_eq!(next.completed, false);
+        assert_ne!(next.uid, t.uid); // Must have new UID
+    }
+
+    #[test]
+    fn test_hierarchy_sorting() {
+        // Create unsorted list
+        let mut t1 = Task::new("Child");
+        let mut t2 = Task::new("Root");
+        let mut t3 = Task::new("Grandchild");
+
+        t1.uid = "child".to_string();
+        t2.uid = "root".to_string();
+        t3.uid = "grand".to_string();
+
+        t1.parent_uid = Some("root".to_string());
+        t3.parent_uid = Some("child".to_string());
+
+        let raw = vec![t3.clone(), t2.clone(), t1.clone()]; // Random order
+        let organized = Task::organize_hierarchy(raw);
+
+        // Expected order: Root -> Child -> Grandchild
+        assert_eq!(organized[0].uid, "root");
+        assert_eq!(organized[0].depth, 0);
+
+        assert_eq!(organized[1].uid, "child");
+        assert_eq!(organized[1].depth, 1);
+
+        assert_eq!(organized[2].uid, "grand");
+        assert_eq!(organized[2].depth, 2);
+    }
+
+    #[test]
+    fn test_to_smart_string() {
+        let mut t = Task::new("Test");
+        t.priority = 1;
+        t.due = Some(Utc.with_ymd_and_hms(2025, 12, 31, 23, 59, 59).unwrap());
+        t.rrule = Some("FREQ=WEEKLY".to_string());
+
+        let s = t.to_smart_string();
+        // Note: Order of tags might vary depending on implementation, but logic is appended
+        assert!(s.contains("Test"));
+        assert!(s.contains("!1"));
+        assert!(s.contains("@2025-12-31"));
+        assert!(s.contains("@weekly"));
+    }
+}
