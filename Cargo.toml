@@ -46,6 +46,11 @@ name = "gui"
 path = "src/bin/gui.rs"
 required-features = ["gui"]
 
+[profile.release]
+strip = true        # Automatically strip symbols from the binary.
+lto = true          # Link Time Optimization (removes dead code across crates).
+codegen-units = 1   # Slower compile, but smaller binary.
+
 [package.metadata.deb]
 maintainer = "Benoit Brummer (Trougnouf) <trougnouf@gmail.com>"
 copyright = "2025, Benoit Brummer (Trougnouf)"
