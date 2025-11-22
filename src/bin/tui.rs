@@ -38,6 +38,31 @@ enum AppEvent {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // --- HANDLE HELP FLAG ---
+    let args: Vec<String> = env::args().collect();
+    if args.len() > 1 && (args[1] == "--help" || args[1] == "-h") {
+        println!("Fairouille - Elegant CalDAV Task Manager");
+        println!("----------------------------------------");
+        println!("Usage: fairouille [OPTIONS]");
+        println!();
+
+        if let Ok(path) = config::Config::get_path_string() {
+            println!("Configuration File: {}", path);
+        } else {
+            println!("Configuration Path: ~/.config/fairouille/config.toml (Standard XDG)");
+        }
+
+        println!();
+        println!("Config Options:");
+        println!("  url = \"https://...\"");
+        println!("  username = \"...\"");
+        println!("  password = \"...\"");
+        println!("  default_calendar = \"todo\" (Optional)");
+        println!();
+        return Ok(());
+    }
+    // ------------------------
+
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         use std::io::Write;
