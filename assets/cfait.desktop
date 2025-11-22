@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=Fairouille
+Name=Cfait
 Comment=Elegant CalDAV Task Manager
-Exec=fairouille-gui
+Exec=cfait-gui
 Terminal=false
 Type=Application
 Categories=Office;Utility;
 Keywords=todo;caldav;task;
-# Icon=fairouille
+# Icon=cfait

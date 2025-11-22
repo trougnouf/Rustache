@@ -1,9 +1,9 @@
 [package]
-name = "fairouille"
+name = "cfait"
 version = "0.1.5"
 edition = "2024"
 description = "A simple, elegant, and lightweight CalDAV task manager"
-default-run = "fairouille" # Default to TUI when running 'cargo run'
+default-run = "cfait" # Default to TUI when running 'cargo run'
 
 [dependencies]
 # --- COMMON (Core Logic) ---
@@ -37,7 +37,7 @@ tui = ["dep:ratatui", "dep:crossterm"]
 gui = ["dep:iced"]
 
 [[bin]]
-name = "fairouille"
+name = "cfait"
 path = "src/bin/tui.rs"
 required-features = ["tui"]
 
@@ -56,7 +56,7 @@ maintainer = "Benoit Brummer (Trougnouf) <trougnouf@gmail.com>"
 copyright = "2025, Benoit Brummer (Trougnouf)"
 license-file = ["LICENSE", "4"]
 extended-description = """
-Fairouille is a tasks / TODO CalDAV client featuring both a CLI/TUI and a GUI.
+Cfait is a tasks / TODO CalDAV client featuring both a CLI/TUI and a GUI.
 It supports smart input, recurrence, and offline caching.
 """
 depends = "$auto"
@@ -64,9 +64,9 @@ section = "utils"
 priority = "optional"
 assets = [
     # Binary 1: TUI
-    ["target/release/fairouille", "usr/bin/", "755"],
-    # Binary 2: GUI (Note: the bin name is 'gui' in cargo, we rename it to fairouille-gui)
-    ["target/release/gui", "usr/bin/fairouille-gui", "755"],
+    ["target/release/cfait", "usr/bin/", "755"],
+    # Binary 2: GUI (Note: the bin name is 'gui' in cargo, we rename it to cfait-gui)
+    ["target/release/gui", "usr/bin/cfait-gui", "755"],
     # Desktop File
-    ["assets/fairouille.desktop", "usr/share/applications/", "644"],
+    ["assets/cfait.desktop", "usr/share/applications/", "644"],
 ]

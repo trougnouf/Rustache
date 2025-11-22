@@ -1,10 +1,11 @@
-use fairouille::cache::Cache;
-use fairouille::client::RustyClient;
-use fairouille::config::Config;
-use fairouille::model::{CalendarListEntry, Task as TodoTask};
+use cfait::cache::Cache;
+use cfait::client::RustyClient;
+use cfait::config::Config;
+use cfait::model::{CalendarListEntry, Task as TodoTask};
 
 use iced::widget::{
-    Rule, button, checkbox, column, container, horizontal_space, row, scrollable, text, text_input,
+    Rule, button, checkbox, column, container, horizontal_space, pick_list, row, scrollable, text,
+    text_input,
 };
 use iced::{Background, Color, Element, Length, Padding, Task, Theme};
 use std::collections::HashSet;
@@ -19,41 +20,34 @@ pub fn main() -> iced::Result {
         .set(runtime)
         .expect("Failed to set global runtime");
 
-    iced::application("Fairouille", RustacheGui::update, RustacheGui::view)
+    iced::application("Cfait", RustacheGui::update, RustacheGui::view)
         .theme(RustacheGui::theme)
         .run_with(RustacheGui::new)
 }
 
-// Application State Machine
 enum AppState {
-    Loading,    // Initial Startup / Connecting
-    Onboarding, // Login Screen
-    Active,     // Main App
+    Loading,
+    Onboarding,
+    Active,
+    Settings,
 }
 
 struct RustacheGui {
     state: AppState,
-
-    // Onboarding Data
     ob_url: String,
     ob_user: String,
     ob_pass: String,
-
-    // Active Data
+    ob_default_cal: Option<String>,
     tasks: Vec<TodoTask>,
     calendars: Vec<CalendarListEntry>,
     active_cal_href: Option<String>,
-
     input_value: String,
     description_value: String,
     search_value: String,
     editing_uid: Option<String>,
     expanded_tasks: HashSet<String>,
     client: Option<RustyClient>,
-
-    // Background Loading Indicator (for syncs/switches while Active)
     loading: bool,
-
     error_msg: Option<String>,
 }
 
@@ -64,7 +58,7 @@ impl Default for RustacheGui {
             ob_url: String::new(),
             ob_user: String::new(),
             ob_pass: String::new(),
-
+            ob_default_cal: None,
             tasks: vec![],
             calendars: vec![],
             active_cal_href: None,
@@ -74,7 +68,7 @@ impl Default for RustacheGui {
             editing_uid: None,
             expanded_tasks: HashSet::new(),
             client: None,
-            loading: true, // Default to true until loaded
+            loading: true,
             error_msg: None,
         }
     }
@@ -82,13 +76,13 @@ impl Default for RustacheGui {
 
 #[derive(Debug, Clone)]
 enum Message {
-    // Onboarding
     ObUrlChanged(String),
     ObUserChanged(String),
     ObPassChanged(String),
+    ObDefaultCalChanged(String),
     ObSubmit,
-
-    // Main App
+    OpenSettings,
+    CancelSettings,
     InputChanged(String),
     DescriptionChanged(String),
     SearchChanged(String),
@@ -102,8 +96,6 @@ enum Message {
     IndentTask(usize),
     OutdentTask(usize),
     ToggleDetails(String),
-
-    // Async Results
     ConfigLoaded(Result<Config, String>),
     Loaded(
         Result<
@@ -120,8 +112,6 @@ enum Message {
     SyncToggleComplete(Result<(TodoTask, Option<TodoTask>), String>),
     TasksRefreshed(Result<Vec<TodoTask>, String>),
     DeleteComplete(#[allow(dead_code)] Result<(), String>),
-
-    // Cache
     CacheLoaded(Vec<TodoTask>),
 }
 
@@ -129,7 +119,6 @@ impl RustacheGui {
     fn new() -> (Self, Task<Message>) {
         (
             Self::default(),
-            // Try loading config first
             Task::perform(
                 async { Config::load().map_err(|e| e.to_string()) },
                 Message::ConfigLoaded,
@@ -139,7 +128,6 @@ impl RustacheGui {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            // --- STARTUP LOGIC ---
             Message::ConfigLoaded(Ok(config)) => {
                 self.state = AppState::Loading;
                 Task::perform(connect_and_fetch_wrapper(config), Message::Loaded)
@@ -148,8 +136,6 @@ impl RustacheGui {
                 self.state = AppState::Onboarding;
                 Task::none()
             }
-
-            // --- ONBOARDING FORM ---
             Message::ObUrlChanged(v) => {
                 self.ob_url = v;
                 Task::none()
@@ -162,58 +148,70 @@ impl RustacheGui {
                 self.ob_pass = v;
                 Task::none()
             }
+            Message::ObDefaultCalChanged(v) => {
+                self.ob_default_cal = Some(v);
+                Task::none()
+            }
+
+            Message::OpenSettings => {
+                if let Ok(cfg) = Config::load() {
+                    self.ob_url = cfg.url;
+                    self.ob_user = cfg.username;
+                    self.ob_pass = cfg.password;
+                    self.ob_default_cal = cfg.default_calendar;
+                }
+                self.state = AppState::Settings;
+                Task::none()
+            }
+            Message::CancelSettings => {
+                self.state = AppState::Active;
+                Task::none()
+            }
             Message::ObSubmit => {
                 let config = Config {
                     url: self.ob_url.clone(),
                     username: self.ob_user.clone(),
                     password: self.ob_pass.clone(),
-                    default_calendar: None,
+                    default_calendar: self.ob_default_cal.clone(),
                 };
                 self.state = AppState::Loading;
                 self.error_msg = Some("Connecting...".to_string());
                 Task::perform(connect_and_fetch_wrapper(config), Message::Loaded)
             }
-
-            // --- MAIN APP LOGIC ---
             Message::CacheLoaded(tasks) => {
-                // If we are already Active, this is a calendar switch cache load
-                self.tasks = TodoTask::organize_hierarchy(tasks);
+                if let AppState::Loading = self.state {
+                    self.tasks = TodoTask::organize_hierarchy(tasks);
+                }
                 Task::none()
             }
-
             Message::Loaded(Ok((client, cals, tasks, active))) => {
                 self.client = Some(client);
                 self.calendars = cals;
                 self.tasks = TodoTask::organize_hierarchy(tasks.clone());
                 self.active_cal_href = active.clone();
-
                 if let Some(href) = &active {
                     let _ = Cache::save(href, &tasks);
                 }
-
                 if !self.ob_url.is_empty() {
                     let _ = Config {
                         url: self.ob_url.clone(),
                         username: self.ob_user.clone(),
                         password: self.ob_pass.clone(),
-                        default_calendar: None,
+                        default_calendar: self.ob_default_cal.clone(),
                     }
                     .save();
                 }
-
                 self.state = AppState::Active;
                 self.error_msg = None;
-                self.loading = false; // Done loading
+                self.loading = false;
                 Task::none()
             }
-
             Message::Loaded(Err(e)) => {
                 self.error_msg = Some(format!("Connection Failed: {}", e));
                 self.state = AppState::Onboarding;
                 self.loading = false;
                 Task::none()
             }
-
             Message::ToggleDetails(uid) => {
                 if self.expanded_tasks.contains(&uid) {
                     self.expanded_tasks.remove(&uid);
@@ -222,7 +220,6 @@ impl RustacheGui {
                 }
                 Task::none()
             }
-
             Message::SyncSaved(Ok(updated_task)) => {
                 if let Some(index) = self.tasks.iter().position(|t| t.uid == updated_task.uid) {
                     self.tasks[index] = updated_task;
@@ -238,7 +235,6 @@ impl RustacheGui {
                 self.error_msg = Some(format!("Sync Error: {}", e));
                 Task::none()
             }
-
             Message::SyncToggleComplete(Ok((updated, created_opt))) => {
                 if let Some(index) = self.tasks.iter().position(|t| t.uid == updated.uid) {
                     self.tasks[index] = updated;
@@ -257,7 +253,6 @@ impl RustacheGui {
                 self.error_msg = Some(format!("Toggle Error: {}", e));
                 Task::none()
             }
-
             Message::TasksRefreshed(Ok(tasks)) => {
                 self.tasks = TodoTask::organize_hierarchy(tasks.clone());
                 if let Some(href) = &self.active_cal_href {
@@ -271,18 +266,14 @@ impl RustacheGui {
                 self.loading = false;
                 Task::none()
             }
-
             Message::SelectCalendar(href) => {
                 if let Some(client) = &mut self.client {
                     self.active_cal_href = Some(href.clone());
-
-                    // Instant Cache Load
                     if let Ok(cached) = Cache::load(&href) {
                         self.tasks = TodoTask::organize_hierarchy(cached);
                     } else {
                         self.tasks.clear();
                     }
-
                     self.loading = true;
                     client.set_calendar(&href);
                     return Task::perform(
@@ -292,7 +283,6 @@ impl RustacheGui {
                 }
                 Task::none()
             }
-
             Message::InputChanged(value) => {
                 self.input_value = value;
                 Task::none()
@@ -305,7 +295,6 @@ impl RustacheGui {
                 self.search_value = val;
                 Task::none()
             }
-
             Message::EditTaskStart(index) => {
                 if let Some(task) = self.tasks.get(index) {
                     self.input_value = task.to_smart_string();
@@ -320,7 +309,6 @@ impl RustacheGui {
                 self.editing_uid = None;
                 Task::none()
             }
-
             Message::SubmitTask => {
                 if !self.input_value.is_empty() {
                     if let Some(edit_uid) = &self.editing_uid {
@@ -356,7 +344,6 @@ impl RustacheGui {
                 }
                 Task::none()
             }
-
             Message::ToggleTask(index, _checked) => {
                 if let Some(task) = self.tasks.get_mut(index) {
                     task.completed = !task.completed;
@@ -389,7 +376,6 @@ impl RustacheGui {
                 Task::none()
             }
             Message::DeleteComplete(_) => Task::none(),
-
             Message::ChangePriority(index, delta) => {
                 if let Some(task) = self.tasks.get_mut(index) {
                     let new_prio = if delta > 0 {
@@ -470,17 +456,61 @@ impl RustacheGui {
                 .center_y(Length::Fill)
                 .into(),
 
-            AppState::Onboarding => {
-                let title = text("Welcome to Fairouille").size(40);
+            AppState::Onboarding | AppState::Settings => {
+                let is_settings = matches!(self.state, AppState::Settings);
+                let title = text(if is_settings {
+                    "Settings"
+                } else {
+                    "Welcome to Cfait"
+                })
+                .size(40);
                 let error = if let Some(e) = &self.error_msg {
                     text(e).color(Color::from_rgb(1.0, 0.0, 0.0))
                 } else {
                     text("")
                 };
 
+                let cal_names: Vec<String> =
+                    self.calendars.iter().map(|c| c.name.clone()).collect();
+                let picker: Element<_> = if !cal_names.is_empty() && is_settings {
+                    column![
+                        text("Default Calendar:"),
+                        pick_list(
+                            cal_names,
+                            self.ob_default_cal.clone(),
+                            Message::ObDefaultCalChanged
+                        )
+                        .width(Length::Fill)
+                        .padding(10)
+                    ]
+                    .spacing(5)
+                    .into()
+                } else {
+                    horizontal_space().width(0).into()
+                };
+
+                let mut buttons = row![].spacing(10);
+                if is_settings {
+                    buttons = buttons.push(
+                        button("Cancel")
+                            .padding(10)
+                            .style(button::secondary)
+                            .on_press(Message::CancelSettings),
+                    );
+                }
+                buttons = buttons.push(
+                    button(if is_settings {
+                        "Save & Connect"
+                    } else {
+                        "Connect"
+                    })
+                    .padding(10)
+                    .on_press(Message::ObSubmit),
+                );
+
                 let form = column![
                     text("CalDAV Server URL:"),
-                    text_input("https://example.com/dav/...", &self.ob_url)
+                    text_input("https://...", &self.ob_url)
                         .on_input(Message::ObUrlChanged)
                         .padding(10),
                     text("Username:"),
@@ -492,17 +522,17 @@ impl RustacheGui {
                         .on_input(Message::ObPassChanged)
                         .secure(true)
                         .padding(10),
-                    button("Connect").padding(10).on_press(Message::ObSubmit)
+                    picker,
+                    buttons
                 ]
                 .spacing(15)
                 .max_width(400);
 
                 let config_path = Config::get_path_string().unwrap_or_default();
-                let footer: Element<'_, Message> =
-                    text(format!("Config will be saved to: {}", config_path))
-                        .size(10)
-                        .color(Color::from_rgb(0.5, 0.5, 0.5))
-                        .into();
+                let footer: Element<'_, Message> = text(format!("Config: {}", config_path))
+                    .size(10)
+                    .color(Color::from_rgb(0.5, 0.5, 0.5))
+                    .into();
 
                 container(
                     column![title, error, form, footer]
@@ -517,7 +547,9 @@ impl RustacheGui {
             }
 
             AppState::Active => {
-                let sidebar_content = column(
+                // --- FIXED SIDEBAR STRUCTURE ---
+                // 1. Scrollable Calendar List (Fills Space)
+                let cal_list = column(
                     self.calendars
                         .iter()
                         .map(|cal| {
@@ -536,9 +568,23 @@ impl RustacheGui {
                         .collect::<Vec<_>>(),
                 )
                 .spacing(10)
-                .padding(10);
+                .width(Length::Fill); // Height is shrink by default
 
-                let sidebar = container(scrollable(sidebar_content))
+                // 2. Settings Button (Fixed at bottom)
+                let settings_btn =
+                    button(row![text("Settings").size(16)].align_y(iced::Alignment::Center))
+                        .padding(10)
+                        .width(Length::Fill)
+                        .style(button::secondary)
+                        .on_press(Message::OpenSettings);
+
+                // 3. Combine them: Column [ Scrollable(List), Settings ]
+                let sidebar_inner =
+                    column![scrollable(cal_list).height(Length::Fill), settings_btn]
+                        .spacing(10)
+                        .padding(10);
+
+                let sidebar = container(sidebar_inner)
                     .width(200)
                     .height(Length::Fill)
                     .style(|theme: &Theme| {
@@ -547,11 +593,8 @@ impl RustacheGui {
                             .background(Background::Color(palette.background.weak.color))
                     });
 
-                let title_text = if self.loading {
-                    "Loading..."
-                } else {
-                    "Fairouille"
-                };
+                // --- MAIN CONTENT ---
+                let title_text = if self.loading { "Loading..." } else { "Cfait" };
                 let search_input = text_input("Search...", &self.search_value)
                     .on_input(Message::SearchChanged)
                     .padding(5)
@@ -560,7 +603,7 @@ impl RustacheGui {
                 let input_placeholder = if self.editing_uid.is_some() {
                     "Edit Title..."
                 } else {
-                    "Add task (Buy cat food !1 @daily)..."
+                    "Add task (Buy Milk !1 @daily)..."
                 };
                 let input_title = text_input(input_placeholder, &self.input_value)
                     .on_input(Message::InputChanged)
@@ -615,6 +658,7 @@ impl RustacheGui {
                     })
                     .collect();
 
+                // --- TASK LIST ---
                 let tasks_view: Element<_> = column(
                     filtered_tasks
                         .into_iter()
@@ -632,22 +676,24 @@ impl RustacheGui {
                                 .color(color)
                                 .width(Length::Fill);
 
-                            let recur_indicator: Element<_> = if task.rrule.is_some() {
-                                text("(R)")
-                                    .size(14)
-                                    .color(Color::from_rgb(0.6, 0.6, 1.0))
-                                    .into()
+                            let recur_text = if task.rrule.is_some() {
+                                text("(R)").size(14).color(Color::from_rgb(0.6, 0.6, 1.0))
                             } else {
-                                horizontal_space().width(0).into()
+                                text("")
                             };
+                            let recur_container = container(recur_text)
+                                .width(Length::Fixed(30.0))
+                                .align_x(iced::alignment::Horizontal::Center);
 
-                            let date_content: Element<_> = match task.due {
+                            let date_text = match task.due {
                                 Some(d) => text(d.format("%Y-%m-%d").to_string())
                                     .size(14)
-                                    .color(Color::from_rgb(0.5, 0.5, 0.5))
-                                    .into(),
-                                None => horizontal_space().width(0).into(),
+                                    .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                None => text(""),
                             };
+                            let date_container = container(date_text)
+                                .width(Length::Fixed(90.0))
+                                .align_x(iced::alignment::Horizontal::Right);
 
                             let btn_style = button::secondary;
                             let has_desc = !task.description.is_empty();
@@ -703,12 +749,8 @@ impl RustacheGui {
                                 checkbox("", task.completed)
                                     .on_toggle(move |b| Message::ToggleTask(real_index, b)),
                                 summary,
-                                container(date_content)
-                                    .width(Length::Fixed(90.0))
-                                    .align_x(iced::alignment::Horizontal::Right),
-                                container(recur_indicator)
-                                    .width(Length::Fixed(30.0))
-                                    .align_x(iced::alignment::Horizontal::Center),
+                                date_container,
+                                recur_container,
                                 actions
                             ]
                             .spacing(15)
@@ -740,7 +782,7 @@ impl RustacheGui {
                         .collect::<Vec<_>>(),
                 )
                 .spacing(2)
-                .into();
+                .into(); // IMPORTANT: This column height is Shrink by default
 
                 let main_content = column![
                     row![
@@ -750,11 +792,12 @@ impl RustacheGui {
                     ]
                     .align_y(iced::Alignment::Center),
                     footer_content,
-                    scrollable(tasks_view)
+                    scrollable(tasks_view).height(Length::Fill) // <--- This is where scrolling happens
                 ]
                 .spacing(20)
                 .padding(20)
                 .max_width(800);
+
                 let layout = row![
                     sidebar,
                     Rule::vertical(1),

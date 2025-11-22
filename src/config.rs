@@ -14,7 +14,7 @@ pub struct Config {
 
 impl Config {
     fn get_path() -> Result<PathBuf> {
-        if let Some(proj_dirs) = ProjectDirs::from("com", "trougnouf", "fairouille") {
+        if let Some(proj_dirs) = ProjectDirs::from("com", "trougnouf", "cfait") {
             let config_dir = proj_dirs.config_dir();
             if !config_dir.exists() {
                 fs::create_dir_all(config_dir)?;

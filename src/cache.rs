@@ -11,7 +11,7 @@ pub struct Cache;
 impl Cache {
     // Generate a filename based on the Calendar URL (or "default")
     fn get_path(key: &str) -> Option<PathBuf> {
-        if let Some(proj) = ProjectDirs::from("com", "fairouille", "fairouille") {
+        if let Some(proj) = ProjectDirs::from("com", "cfait", "cfait") {
             let cache_dir = proj.cache_dir();
             if !cache_dir.exists() {
                 let _ = fs::create_dir_all(cache_dir);

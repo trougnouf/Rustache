@@ -1,8 +1,8 @@
-use fairouille::cache::Cache;
-use fairouille::client::RustyClient;
-use fairouille::config;
-use fairouille::model::{CalendarListEntry, Task};
-use fairouille::ui::{AppState, Focus, InputMode, draw};
+use cfait::cache::Cache;
+use cfait::client::RustyClient;
+use cfait::config;
+use cfait::model::{CalendarListEntry, Task};
+use cfait::ui::{AppState, Focus, InputMode, draw};
 
 use anyhow::Result;
 use crossterm::{
@@ -41,15 +41,15 @@ async fn main() -> Result<()> {
     // --- HANDLE HELP FLAG ---
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 && (args[1] == "--help" || args[1] == "-h") {
-        println!("Fairouille - Elegant CalDAV Task Manager");
+        println!("Cfait - Elegant CalDAV Task Manager");
         println!("----------------------------------------");
-        println!("Usage: fairouille [OPTIONS]");
+        println!("Usage: cfait [OPTIONS]");
         println!();
 
         if let Ok(path) = config::Config::get_path_string() {
             println!("Configuration File: {}", path);
         } else {
-            println!("Configuration Path: ~/.config/fairouille/config.toml (Standard XDG)");
+            println!("Configuration Path: ~/.config/cfait/config.toml (Standard XDG)");
         }
 
         println!();
@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open("fairouille_panic.log")
+            .open("cfait_panic.log")
         {
             let _ = writeln!(file, "PANIC: {:?}", info);
         }
@@ -82,7 +82,7 @@ async fn main() -> Result<()> {
         Ok(cfg) => (cfg.url, cfg.username, cfg.password, cfg.default_calendar),
         Err(_) => {
             // Config missing? Interactive Prompt!
-            println!("Welcome to Fairouille (TUI). Config not found.");
+            println!("Welcome to Cfait (TUI). Config not found.");
             println!("Please setup your CalDAV connection.");
 
             let mut input = String::new();

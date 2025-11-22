@@ -31,21 +31,21 @@ jobs:
       - name: Create Archive
         run: |
           # Create a staging directory
-          STAGING="fairouille-${{ github.ref_name }}"
+          STAGING="cfait-${{ github.ref_name }}"
           mkdir -p "$STAGING"
 
-          # Copy Main Binary (TUI) -> matches [[bin]] name = "fairouille"
-          cp target/release/fairouille "$STAGING/"
+          # Copy Main Binary (TUI) -> matches [[bin]] name = "cfait"
+          cp target/release/cfait "$STAGING/"
           
           # Copy GUI Binary -> matches [[bin]] name = "gui", renamed for user
-          cp target/release/gui "$STAGING/fairouille-gui"
+          cp target/release/gui "$STAGING/cfait-gui"
           
           # Assets
           cp README.md LICENSE "$STAGING/"
-          cp assets/fairouille.desktop "$STAGING/"
+          cp assets/cfait.desktop "$STAGING/"
 
           # Compress
-          tar -czvf "fairouille-linux-${{ github.ref_name }}.tar.gz" "$STAGING"
+          tar -czvf "cfait-linux-${{ github.ref_name }}.tar.gz" "$STAGING"
 
       # 4. Publish to GitHub Releases
       - name: Upload Release
@@ -53,4 +53,37 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            fairouille-linux-${{ github.ref_name }}.tar.gz
+            cfait-linux-${{ github.ref_name }}.tar.gz
+
+  package-arch:
+    needs: build-linux # Wait for the main build to verify code works
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Generate Production PKGBUILD
+        run: |
+          VERSION=${{ github.ref_name }} # e.g., v0.1.5
+          VERSION_NUM=${VERSION#v}       # e.g., 0.1.5
+          
+          # 1. Download the Source Tarball (Simulating what makepkg does)
+          # Note: Ensure this matches the source= line in your PKGBUILD exactly
+          SOURCE_URL="https://gitlab.com/trougnouf/cfait/-/archive/${VERSION}/cfait-${VERSION}.tar.gz"
+          wget -O source.tar.gz "$SOURCE_URL"
+          
+          # 2. Calculate Hash
+          HASH=$(sha256sum source.tar.gz | awk '{print $1}')
+          echo "Calculated Hash: $HASH"
+          
+          # 3. Patch PKGBUILD
+          # Replace 'SKIP' with the real hash
+          sed -i "s/'SKIP'/'$HASH'/" packaging/arch/PKGBUILD
+          
+          # Move it to root for easy uploading
+          cp packaging/arch/PKGBUILD PKGBUILD-release
+
+      - name: Upload PKGBUILD to Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: PKGBUILD-release

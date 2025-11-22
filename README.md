@@ -1,12 +1,12 @@
-# Fairouille
+# Cfait
 
-**Fairouille** is a simple, elegant, and lightweight CalDAV task manager, written in Rust.
+**Cfait** is a simple, elegant, and lightweight CalDAV task manager, written in Rust.
 
 It features both a lightning-fast **TUI (Terminal UI)** and a modern **GUI (Graphical UI)** for desktop integration.
 
 ## Features
 
-*   **Dual Interface:** Run it in your terminal (`fairouille`) or as a windowed app (`fairouille-gui`).
+*   **Dual Interface:** Run it in your terminal (`cfait`) or as a windowed app (`cfait-gui`).
 *   **Smart Input:** Add tasks naturally: `Buy cat food !1 @tomorrow` sets High Priority and Due Date automatically.
 *   **Syncs Everywhere:** Fully compatible with standard CalDAV servers (Radicale, Nextcloud, iCloud, etc.).
 *   **Hierarchy Support:** Create sub-tasks and organize nested lists easily.
@@ -29,17 +29,17 @@ cargo install --path . --bin gui --no-default-features --features gui
 ### 2. Run
 ```bash
 # Run TUI
-fairouille
+cfait
 
 # Run GUI
-fairouille-gui
+cfait-gui
 ```
 
 ## Configuration
 
 Create a config file at:
-*   **Linux:** `~/.config/fairouille/config.toml`
-*   **Mac:** `~/Library/Application Support/com.fairouille.fairouille/config.toml`
+*   **Linux:** `~/.config/cfait/config.toml`
+*   **Mac:** `~/Library/Application Support/com.cfait.cfait/config.toml`
 
 ```toml
 url = "https://caldav.example.com/remote.php/dav/calendars/user/"
@@ -73,10 +73,19 @@ When adding (`a`) or editing (`e`) a task, you can use shortcuts directly in the
 *   `@daily`, `@weekly`, `@monthly`, `@yearly`, `@every 4 days`, `@every 2 weeks`, etc: Sets Recurrence.
 
 ## TODO
-* [ ] CLI Interface (non-interactive)
+* [ ] **Categories**! e.g. @cats:Leslie,todev,short,home_improvement
+* [ ] AUR: cfait-git
+* [ ] TUI: clickable
+* [ ] CLI interface (non-interactive, e.g. --add-task or -a)
 * [ ] Unit Tests
 * [ ] Multi-calendar Search
 * [ ] Desktop Notifications
+* [ ] Add lightweight font w/ monochrome emojis (embedded font or iced_aw or ??? or use system standard font or use system standard icons)
+* [ ] TUI/GUI(/CLI): multiple instances ok
+* [ ] TUI: cursor when naming tasks
+* [ ] TUI: list keywords when naming tasks
+* [ ] switch this todo to cfait and version control it here
+* [>] rename
 
 ## License
 GPL3
