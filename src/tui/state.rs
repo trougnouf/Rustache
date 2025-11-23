@@ -1,5 +1,8 @@
 use crate::model::{CalendarListEntry, Task};
+use crate::store::TaskStore;
+use crate::tui::action::SidebarMode;
 use ratatui::widgets::ListState;
+use std::collections::HashSet;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum Focus {
@@ -17,15 +20,28 @@ pub enum InputMode {
 }
 
 pub struct AppState {
-    pub tasks: Vec<Task>,
-    pub view_indices: Vec<usize>,
+    // Data
+    pub store: TaskStore,
+    pub tasks: Vec<Task>, // The visible, filtered list
     pub calendars: Vec<CalendarListEntry>,
+
+    // UI State
     pub list_state: ListState,
-    pub cal_state: ListState,
+    pub cal_state: ListState, // Used for both Cals and Cats list
     pub active_focus: Focus,
+    pub mode: InputMode,
     pub message: String,
     pub loading: bool,
-    pub mode: InputMode,
+
+    // Filter State
+    pub sidebar_mode: SidebarMode,
+    pub active_cal_href: Option<String>,
+    pub selected_categories: HashSet<String>,
+    pub match_all_categories: bool,
+    pub hide_completed: bool,
+    pub hide_completed_in_tags: bool,
+
+    // Input Buffers
     pub input_buffer: String,
     pub cursor_position: usize,
     pub editing_index: Option<usize>,
@@ -37,22 +53,81 @@ impl AppState {
         l_state.select(Some(0));
         let mut c_state = ListState::default();
         c_state.select(Some(0));
+
         Self {
+            store: TaskStore::new(),
             tasks: vec![],
-            view_indices: vec![],
             calendars: vec![],
             list_state: l_state,
             cal_state: c_state,
             active_focus: Focus::Main,
-            message: "Tab: View | /: Search | a: Add | e: Edit".to_string(),
-            loading: true,
             mode: InputMode::Normal,
+            message: "Loading...".to_string(),
+            loading: true,
+
+            sidebar_mode: SidebarMode::Calendars,
+            active_cal_href: None,
+            selected_categories: HashSet::new(),
+            match_all_categories: false,
+            hide_completed: false,
+            hide_completed_in_tags: false,
+
             input_buffer: String::new(),
             cursor_position: 0,
             editing_index: None,
         }
     }
 
+    pub fn refresh_filtered_view(&mut self) {
+        // Determine Context
+        let cal_filter = if self.sidebar_mode == SidebarMode::Categories {
+            None
+        } else {
+            self.active_cal_href.as_deref()
+        };
+
+        // Determine Search Text
+        // If in Searching mode, use buffer. If in Normal mode, empty (unless we want persistent search?)
+        // Let's stick to persistent search only if mode is Searching,
+        // otherwise clearing search on Escape (which resets InputMode) logic handles it.
+        let search_term = if self.mode == InputMode::Searching {
+            &self.input_buffer
+        } else {
+            ""
+        };
+
+        self.tasks = self.store.filter(
+            cal_filter,
+            &self.selected_categories,
+            self.match_all_categories,
+            search_term,
+            self.hide_completed,
+            self.hide_completed_in_tags,
+        );
+
+        // Clamp selection
+        let len = self.tasks.len();
+        if len == 0 {
+            self.list_state.select(None);
+        } else {
+            let current = self.list_state.selected().unwrap_or(0);
+            if current >= len {
+                self.list_state.select(Some(len - 1));
+            } else {
+                self.list_state.select(Some(current));
+            }
+        }
+    }
+
+    pub fn get_selected_task(&self) -> Option<&Task> {
+        if let Some(idx) = self.list_state.selected() {
+            self.tasks.get(idx)
+        } else {
+            None
+        }
+    }
+
+    // --- INPUT HELPERS ---
     pub fn move_cursor_left(&mut self) {
         let cursor_moved_left = self.cursor_position.saturating_sub(1);
         self.cursor_position = self.clamp_cursor(cursor_moved_left);
@@ -68,10 +143,9 @@ impl AppState {
     pub fn delete_char(&mut self) {
         if self.cursor_position != 0 {
             let current_index = self.cursor_position;
-            let from_left_to_current_index = current_index - 1;
-            let before_char_to_delete = self.input_buffer.chars().take(from_left_to_current_index);
-            let after_char_to_delete = self.input_buffer.chars().skip(current_index);
-            self.input_buffer = before_char_to_delete.chain(after_char_to_delete).collect();
+            let before = self.input_buffer.chars().take(current_index - 1);
+            let after = self.input_buffer.chars().skip(current_index);
+            self.input_buffer = before.chain(after).collect();
             self.move_cursor_left();
         }
     }
@@ -82,44 +156,17 @@ impl AppState {
     fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
         new_cursor_pos.clamp(0, self.input_buffer.chars().count())
     }
-    pub fn recalculate_view(&mut self) {
-        if self.mode == InputMode::Searching && !self.input_buffer.is_empty() {
-            let query = self.input_buffer.to_lowercase();
-            self.view_indices = self
-                .tasks
-                .iter()
-                .enumerate()
-                .filter(|(_, t)| t.summary.to_lowercase().contains(&query))
-                .map(|(i, _)| i)
-                .collect();
-        } else {
-            self.view_indices = (0..self.tasks.len()).collect();
-        }
-        let sel = self.list_state.selected().unwrap_or(0);
-        if self.view_indices.is_empty() {
-            self.list_state.select(Some(0));
-        } else if sel >= self.view_indices.len() {
-            self.list_state.select(Some(self.view_indices.len() - 1));
-        }
-    }
-    pub fn get_selected_master_index(&self) -> Option<usize> {
-        if let Some(view_idx) = self.list_state.selected() {
-            if view_idx < self.view_indices.len() {
-                return Some(self.view_indices[view_idx]);
-            }
-        }
-        None
-    }
+
+    // --- NAVIGATION ---
     pub fn next(&mut self) {
         match self.active_focus {
             Focus::Main => {
-                let len = self.view_indices.len();
-                if len == 0 {
+                if self.tasks.is_empty() {
                     return;
                 }
                 let i = match self.list_state.selected() {
                     Some(i) => {
-                        if i >= len - 1 {
+                        if i >= self.tasks.len() - 1 {
                             0
                         } else {
                             i + 1
@@ -130,7 +177,10 @@ impl AppState {
                 self.list_state.select(Some(i));
             }
             Focus::Sidebar => {
-                let len = self.calendars.len();
+                let len = match self.sidebar_mode {
+                    SidebarMode::Calendars => self.calendars.len(),
+                    SidebarMode::Categories => self.store.get_all_categories().len(),
+                };
                 if len == 0 {
                     return;
                 }
@@ -151,14 +201,13 @@ impl AppState {
     pub fn previous(&mut self) {
         match self.active_focus {
             Focus::Main => {
-                let len = self.view_indices.len();
-                if len == 0 {
+                if self.tasks.is_empty() {
                     return;
                 }
                 let i = match self.list_state.selected() {
                     Some(i) => {
                         if i == 0 {
-                            len - 1
+                            self.tasks.len() - 1
                         } else {
                             i - 1
                         }
@@ -168,7 +217,10 @@ impl AppState {
                 self.list_state.select(Some(i));
             }
             Focus::Sidebar => {
-                let len = self.calendars.len();
+                let len = match self.sidebar_mode {
+                    SidebarMode::Calendars => self.calendars.len(),
+                    SidebarMode::Categories => self.store.get_all_categories().len(),
+                };
                 if len == 0 {
                     return;
                 }
@@ -187,43 +239,16 @@ impl AppState {
         }
     }
     pub fn jump_forward(&mut self, step: usize) {
-        match self.active_focus {
-            Focus::Main => {
-                if self.view_indices.is_empty() {
-                    return;
-                }
-                let current = self.list_state.selected().unwrap_or(0);
-                let new_index = (current + step).min(self.view_indices.len() - 1);
-                self.list_state.select(Some(new_index));
-            }
-            Focus::Sidebar => {
-                if self.calendars.is_empty() {
-                    return;
-                }
-                let current = self.cal_state.selected().unwrap_or(0);
-                let new_index = (current + step).min(self.calendars.len() - 1);
-                self.cal_state.select(Some(new_index));
-            }
+        if self.active_focus == Focus::Main && !self.tasks.is_empty() {
+            let current = self.list_state.selected().unwrap_or(0);
+            self.list_state
+                .select(Some((current + step).min(self.tasks.len() - 1)));
         }
     }
     pub fn jump_backward(&mut self, step: usize) {
-        match self.active_focus {
-            Focus::Main => {
-                if self.view_indices.is_empty() {
-                    return;
-                }
-                let current = self.list_state.selected().unwrap_or(0);
-                let new_index = current.saturating_sub(step);
-                self.list_state.select(Some(new_index));
-            }
-            Focus::Sidebar => {
-                if self.calendars.is_empty() {
-                    return;
-                }
-                let current = self.cal_state.selected().unwrap_or(0);
-                let new_index = current.saturating_sub(step);
-                self.cal_state.select(Some(new_index));
-            }
+        if self.active_focus == Focus::Main && !self.tasks.is_empty() {
+            let current = self.list_state.selected().unwrap_or(0);
+            self.list_state.select(Some(current.saturating_sub(step)));
         }
     }
     pub fn toggle_focus(&mut self) {

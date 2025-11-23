@@ -7,7 +7,7 @@ use crate::client::RustyClient;
 use crate::config;
 use crate::model::Task;
 
-use action::{Action, AppEvent};
+use action::{Action, AppEvent, SidebarMode};
 use state::{AppState, Focus, InputMode};
 use view::draw;
 
@@ -22,18 +22,10 @@ use std::{env, io, time::Duration};
 use tokio::sync::mpsc;
 
 pub async fn run() -> Result<()> {
-    // --- HANDLE HELP FLAG ---
+    // --- 1. PREAMBLE & CONFIG ---
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 && (args[1] == "--help" || args[1] == "-h") {
-        println!("Cfait - Elegant CalDAV Task Manager");
-        println!("----------------------------------------");
         println!("Usage: cfait [OPTIONS]");
-        println!();
-        if let Ok(path) = config::Config::get_path_string() {
-            println!("Configuration File: {}", path);
-        } else {
-            println!("Configuration Path: ~/.config/cfait/config.toml");
-        }
         return Ok(());
     }
 
@@ -51,69 +43,37 @@ pub async fn run() -> Result<()> {
     }));
 
     let config_result = config::Config::load();
-
-    let (url, user, pass, default_cal) = match config_result {
-        Ok(cfg) => (cfg.url, cfg.username, cfg.password, cfg.default_calendar),
+    let (url, user, pass, default_cal, hide_completed, hide_in_tags) = match config_result {
+        Ok(cfg) => (
+            cfg.url,
+            cfg.username,
+            cfg.password,
+            cfg.default_calendar,
+            cfg.hide_completed,
+            cfg.hide_completed_in_tags,
+        ),
         Err(_) => {
-            println!("Welcome to Cfait (TUI). Config not found.");
-            println!("Please setup your CalDAV connection.");
-            let mut input = String::new();
-            println!("Server URL (e.g. https://.../):");
-            std::io::stdin().read_line(&mut input)?;
-            let url = input.trim().to_string();
-            input.clear();
-            println!("Username:");
-            std::io::stdin().read_line(&mut input)?;
-            let user = input.trim().to_string();
-            input.clear();
-            println!("Password:");
-            std::io::stdin().read_line(&mut input)?;
-            let pass = input.trim().to_string();
-            input.clear();
-
-            println!("Testing connection...");
-            let check_result = async {
-                let client = RustyClient::new(&url, &user, &pass).map_err(|e| e.to_string())?;
-                if let Err(e) = client.get_calendars().await {
-                    return Err(format!("Could not list calendars: {}", e));
-                }
-                Ok(())
-            }
-            .await;
-
-            if let Err(e) = check_result {
-                eprintln!("\nERROR: Connection Failed!");
-                eprintln!("Reason: {}", e);
-                std::process::exit(1);
-            }
-
-            println!("Success! Saving configuration...");
-            let new_config = config::Config {
-                url: url.clone(),
-                username: user.clone(),
-                password: pass.clone(),
-                default_calendar: None,
-            };
-            if let Ok(path) = config::Config::get_path_string() {
-                println!("Config saved to: {}", path);
-            }
-            new_config.save()?;
-            println!("Starting TUI...");
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            (url, user, pass, None)
+            eprintln!("Config not found. Please run 'cfait-gui' to set up credentials.");
+            return Ok(());
         }
     };
 
+    // --- 2. TERMINAL SETUP ---
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    // --- 3. STATE INIT ---
     let mut app_state = AppState::new();
+    app_state.hide_completed = hide_completed;
+    app_state.hide_completed_in_tags = hide_in_tags;
+
     let (action_tx, mut action_rx) = mpsc::channel(10);
     let (event_tx, mut event_rx) = mpsc::channel(10);
 
+    // --- 4. NETWORK THREAD ---
     tokio::spawn(async move {
         let client = match RustyClient::new(&url, &user, &pass) {
             Ok(c) => c,
@@ -127,6 +87,7 @@ pub async fn run() -> Result<()> {
             .send(AppEvent::Status("Connecting...".to_string()))
             .await;
 
+        // A. Fetch Calendars
         let calendars = match client.get_calendars().await {
             Ok(cals) => {
                 let _ = event_tx.send(AppEvent::CalendarsLoaded(cals.clone())).await;
@@ -140,88 +101,62 @@ pub async fn run() -> Result<()> {
             }
         };
 
-        let mut active_href = None;
-
-        if let Some(def_name) = &default_cal {
-            if let Some(cals) = &calendars {
-                if let Some(found) = cals
-                    .iter()
-                    .find(|c| c.name == *def_name || c.href == *def_name)
-                {
-                    active_href = Some(found.href.clone());
+        // B. Load Cache (Fast) & Then Network (Slow)
+        if let Some(cals) = &calendars {
+            // 1. Cache Load
+            let mut cached_results = Vec::new();
+            for cal in cals {
+                if let Ok(tasks) = Cache::load(&cal.href) {
+                    cached_results.push((cal.href.clone(), tasks));
                 }
             }
-        }
-
-        if active_href.is_none() {
-            if let Ok(href) = client.discover_calendar().await {
-                active_href = Some(href);
-            }
-        }
-
-        if let Some(href) = &active_href {
-            if let Ok(cached) = Cache::load(href) {
-                let organized = Task::organize_hierarchy(cached);
-                let _ = event_tx.send(AppEvent::TasksLoaded(organized)).await;
+            if !cached_results.is_empty() {
+                let _ = event_tx.send(AppEvent::TasksLoaded(cached_results)).await;
                 let _ = event_tx
                     .send(AppEvent::Status("Loaded from cache.".to_string()))
                     .await;
             }
-        }
 
-        let _ = event_tx
-            .send(AppEvent::Status("Syncing...".to_string()))
-            .await;
-
-        let mut local_tasks: Vec<Task> = if let Some(href) = &active_href {
-            match client.get_tasks(href).await {
-                Ok(t) => {
-                    let organized = Task::organize_hierarchy(t.clone());
-                    let _ = Cache::save(href, &t);
-                    organized
+            // 2. Network Sync
+            let _ = event_tx
+                .send(AppEvent::Status("Syncing...".to_string()))
+                .await;
+            match client.get_all_tasks(cals).await {
+                Ok(results) => {
+                    let _ = event_tx.send(AppEvent::TasksLoaded(results)).await;
+                    let _ = event_tx.send(AppEvent::Status("Ready.".to_string())).await;
                 }
                 Err(e) => {
                     let _ = event_tx.send(AppEvent::Error(e)).await;
-                    vec![]
                 }
             }
-        } else {
-            vec![]
-        };
+        }
 
-        let _ = event_tx
-            .send(AppEvent::TasksLoaded(local_tasks.clone()))
-            .await;
-        let _ = event_tx.send(AppEvent::Status("Ready.".to_string())).await;
-
+        // C. Action Loop
         while let Some(action) = action_rx.recv().await {
             match action {
                 Action::Quit => break,
 
-                Action::SwitchCalendar(href) => {
-                    active_href = Some(href.clone());
-                    let _ = event_tx
-                        .send(AppEvent::Status("Switching...".to_string()))
-                        .await;
-
-                    if let Ok(cached) = Cache::load(&href) {
-                        local_tasks = Task::organize_hierarchy(cached);
-                        let _ = event_tx
-                            .send(AppEvent::TasksLoaded(local_tasks.clone()))
-                            .await;
-                    } else {
-                        local_tasks.clear();
-                        let _ = event_tx.send(AppEvent::TasksLoaded(vec![])).await;
+                Action::SwitchCalendar(href) => match client.get_tasks(&href).await {
+                    Ok(t) => {
+                        let _ = event_tx.send(AppEvent::TasksLoaded(vec![(href, t)])).await;
                     }
+                    Err(e) => {
+                        let _ = event_tx.send(AppEvent::Error(e)).await;
+                    }
+                },
 
-                    match client.get_tasks(&href).await {
-                        Ok(t) => {
-                            local_tasks = Task::organize_hierarchy(t.clone());
-                            let _ = Cache::save(&href, &t);
+                Action::CreateTask(summary, href) => {
+                    let mut new_task = Task::new(&summary);
+                    new_task.calendar_href = href.clone();
+                    match client.create_task(&mut new_task).await {
+                        Ok(_) => {
+                            if let Ok(t) = client.get_tasks(&href).await {
+                                let _ = event_tx.send(AppEvent::TasksLoaded(vec![(href, t)])).await;
+                            }
                             let _ = event_tx
-                                .send(AppEvent::TasksLoaded(local_tasks.clone()))
+                                .send(AppEvent::Status("Created.".to_string()))
                                 .await;
-                            let _ = event_tx.send(AppEvent::Status("Ready.".to_string())).await;
                         }
                         Err(e) => {
                             let _ = event_tx.send(AppEvent::Error(e)).await;
@@ -229,259 +164,45 @@ pub async fn run() -> Result<()> {
                     }
                 }
 
-                Action::CreateTask(summary) => {
-                    if let Some(href) = &active_href {
-                        let _ = event_tx
-                            .send(AppEvent::Status("Creating...".to_string()))
-                            .await;
-                        let mut new_task = Task::new(&summary);
-                        new_task.calendar_href = href.clone(); // Set parent!
-                        match client.create_task(&mut new_task).await {
-                            Ok(_) => {
-                                local_tasks.push(new_task);
-                                local_tasks = Task::organize_hierarchy(local_tasks);
-                                let _ = Cache::save(href, &local_tasks);
-                                let _ = event_tx
-                                    .send(AppEvent::TasksLoaded(local_tasks.clone()))
-                                    .await;
-                                let _ = event_tx
-                                    .send(AppEvent::Status("Created.".to_string()))
-                                    .await;
-                            }
-                            Err(e) => {
-                                let _ = event_tx.send(AppEvent::Error(e)).await;
-                            }
+                Action::UpdateTask(mut task) => {
+                    let _href = task.calendar_href.clone();
+                    match client.update_task(&mut task).await {
+                        Ok(_) => {
+                            let _ = event_tx.send(AppEvent::Status("Saved.".to_string())).await;
                         }
-                    } else {
-                        let _ = event_tx.send(AppEvent::Error("No calendar".into())).await;
-                    }
-                }
-
-                Action::EditTask(index, smart_string) => {
-                    if index < local_tasks.len() {
-                        let task = &mut local_tasks[index];
-                        task.apply_smart_input(&smart_string);
-                        let _ = event_tx
-                            .send(AppEvent::Status("Updating...".to_string()))
-                            .await;
-                        let mut task_copy = task.clone();
-                        match client.update_task(&mut task_copy).await {
-                            Ok(_) => {
-                                local_tasks[index] = task_copy;
-                                local_tasks = Task::organize_hierarchy(local_tasks);
-                                if let Some(href) = &active_href {
-                                    let _ = Cache::save(href, &local_tasks);
-                                }
-                                let _ = event_tx
-                                    .send(AppEvent::TasksLoaded(local_tasks.clone()))
-                                    .await;
-                                let _ = event_tx
-                                    .send(AppEvent::Status("Updated.".to_string()))
-                                    .await;
-                            }
-                            Err(e) => {
-                                let _ = event_tx.send(AppEvent::Error(e)).await;
-                            }
+                        Err(e) => {
+                            let _ = event_tx.send(AppEvent::Error(e)).await;
                         }
                     }
                 }
 
-                Action::EditDescription(index, description) => {
-                    if index < local_tasks.len() {
-                        let task = &mut local_tasks[index];
-                        task.description = description;
-                        let _ = event_tx
-                            .send(AppEvent::Status("Updating Note...".to_string()))
-                            .await;
-                        let mut task_copy = task.clone();
-                        match client.update_task(&mut task_copy).await {
-                            Ok(_) => {
-                                local_tasks[index] = task_copy;
-                                local_tasks = Task::organize_hierarchy(local_tasks);
-                                if let Some(href) = &active_href {
-                                    let _ = Cache::save(href, &local_tasks);
-                                }
-                                let _ = event_tx
-                                    .send(AppEvent::TasksLoaded(local_tasks.clone()))
-                                    .await;
-                                let _ = event_tx
-                                    .send(AppEvent::Status("Updated.".to_string()))
-                                    .await;
+                Action::ToggleTask(mut task) => {
+                    let href = task.calendar_href.clone();
+                    // Revert optimistic flip for the server call
+                    task.completed = !task.completed;
+                    match client.toggle_task(&mut task).await {
+                        Ok(_) => {
+                            let _ = event_tx.send(AppEvent::Status("Synced.".to_string())).await;
+                            if let Ok(t) = client.get_tasks(&href).await {
+                                let _ = event_tx.send(AppEvent::TasksLoaded(vec![(href, t)])).await;
                             }
-                            Err(e) => {
-                                let _ = event_tx.send(AppEvent::Error(e)).await;
-                            }
+                        }
+                        Err(e) => {
+                            let _ = event_tx.send(AppEvent::Error(e)).await;
                         }
                     }
                 }
 
-                Action::ToggleTask(index) => {
-                    if index < local_tasks.len() {
-                        let task = &mut local_tasks[index];
-                        let _ = event_tx
-                            .send(AppEvent::Status("Syncing...".to_string()))
-                            .await;
-                        let mut task_copy = task.clone();
-
-                        match client.toggle_task(&mut task_copy).await {
-                            Ok((updated, created_opt)) => {
-                                local_tasks[index] = updated;
-                                if let Some(created) = created_opt {
-                                    local_tasks.push(created);
-                                }
-                                local_tasks = Task::organize_hierarchy(local_tasks);
-                                if let Some(href) = &active_href {
-                                    let _ = Cache::save(href, &local_tasks);
-                                }
-                                let _ = event_tx
-                                    .send(AppEvent::TasksLoaded(local_tasks.clone()))
-                                    .await;
-                                let _ =
-                                    event_tx.send(AppEvent::Status("Synced.".to_string())).await;
-                            }
-                            Err(e) => {
-                                let _ = event_tx
-                                    .send(AppEvent::Error(format!("Sync Failed: {}", e)))
-                                    .await;
-                            }
-                        }
-                    }
-                }
-
-                Action::DeleteTask(index) => {
-                    if index < local_tasks.len() {
-                        let task = local_tasks[index].clone();
-                        let _ = event_tx
-                            .send(AppEvent::Status("Deleting...".to_string()))
-                            .await;
-                        match client.delete_task(&task).await {
-                            Ok(_) => {
-                                local_tasks.remove(index);
-                                local_tasks = Task::organize_hierarchy(local_tasks);
-                                if let Some(href) = &active_href {
-                                    let _ = Cache::save(href, &local_tasks);
-                                }
-                                let _ = event_tx
-                                    .send(AppEvent::TasksLoaded(local_tasks.clone()))
-                                    .await;
-                                let _ = event_tx
-                                    .send(AppEvent::Status("Deleted.".to_string()))
-                                    .await;
-                            }
-                            Err(e) => {
-                                let _ = event_tx.send(AppEvent::Error(e)).await;
-                            }
-                        }
-                    }
-                }
-
-                Action::ChangePriority(index, delta) => {
-                    if index < local_tasks.len() {
-                        let task = &mut local_tasks[index];
-                        let new_prio = if delta > 0 {
-                            match task.priority {
-                                0 => 9,
-                                9 => 5,
-                                5 => 1,
-                                1 => 1,
-                                _ => 5,
-                            }
-                        } else {
-                            match task.priority {
-                                1 => 5,
-                                5 => 9,
-                                9 => 0,
-                                0 => 0,
-                                _ => 0,
-                            }
-                        };
-                        if new_prio != task.priority {
-                            task.priority = new_prio;
+                Action::DeleteTask(task) => {
+                    let _href = task.calendar_href.clone();
+                    match client.delete_task(&task).await {
+                        Ok(_) => {
                             let _ = event_tx
-                                .send(AppEvent::Status("Updating Prio...".to_string()))
+                                .send(AppEvent::Status("Deleted.".to_string()))
                                 .await;
-                            let mut task_copy = task.clone();
-                            match client.update_task(&mut task_copy).await {
-                                Ok(_) => {
-                                    local_tasks[index] = task_copy;
-                                    local_tasks = Task::organize_hierarchy(local_tasks);
-                                    if let Some(href) = &active_href {
-                                        let _ = Cache::save(href, &local_tasks);
-                                    }
-                                    let _ = event_tx
-                                        .send(AppEvent::TasksLoaded(local_tasks.clone()))
-                                        .await;
-                                    let _ = event_tx
-                                        .send(AppEvent::Status("Updated.".to_string()))
-                                        .await;
-                                }
-                                Err(e) => {
-                                    let _ = event_tx.send(AppEvent::Error(e)).await;
-                                }
-                            }
                         }
-                    }
-                }
-
-                Action::IndentTask(index) => {
-                    if index > 0 && index < local_tasks.len() {
-                        let parent_candidate = local_tasks[index - 1].uid.clone();
-                        if local_tasks[index].parent_uid != Some(parent_candidate.clone()) {
-                            let task = &mut local_tasks[index];
-                            task.parent_uid = Some(parent_candidate);
-                            let _ = event_tx
-                                .send(AppEvent::Status("Indenting...".to_string()))
-                                .await;
-                            let mut task_copy = task.clone();
-                            match client.update_task(&mut task_copy).await {
-                                Ok(_) => {
-                                    local_tasks[index] = task_copy;
-                                    local_tasks = Task::organize_hierarchy(local_tasks);
-                                    if let Some(href) = &active_href {
-                                        let _ = Cache::save(href, &local_tasks);
-                                    }
-                                    let _ = event_tx
-                                        .send(AppEvent::TasksLoaded(local_tasks.clone()))
-                                        .await;
-                                    let _ = event_tx
-                                        .send(AppEvent::Status("Indented.".to_string()))
-                                        .await;
-                                }
-                                Err(e) => {
-                                    let _ = event_tx.send(AppEvent::Error(e)).await;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Action::OutdentTask(index) => {
-                    if index < local_tasks.len() {
-                        let task = &mut local_tasks[index];
-                        if task.parent_uid.is_some() {
-                            task.parent_uid = None;
-                            let _ = event_tx
-                                .send(AppEvent::Status("Outdenting...".to_string()))
-                                .await;
-                            let mut task_copy = task.clone();
-                            match client.update_task(&mut task_copy).await {
-                                Ok(_) => {
-                                    local_tasks[index] = task_copy;
-                                    local_tasks = Task::organize_hierarchy(local_tasks);
-                                    if let Some(href) = &active_href {
-                                        let _ = Cache::save(href, &local_tasks);
-                                    }
-                                    let _ = event_tx
-                                        .send(AppEvent::TasksLoaded(local_tasks.clone()))
-                                        .await;
-                                    let _ = event_tx
-                                        .send(AppEvent::Status("Outdented.".to_string()))
-                                        .await;
-                                }
-                                Err(e) => {
-                                    let _ = event_tx.send(AppEvent::Error(e)).await;
-                                }
-                            }
+                        Err(e) => {
+                            let _ = event_tx.send(AppEvent::Error(e)).await;
                         }
                     }
                 }
@@ -489,35 +210,53 @@ pub async fn run() -> Result<()> {
         }
     });
 
+    // --- 5. UI LOOP ---
     loop {
         terminal.draw(|f| draw(f, &mut app_state))?;
 
+        // A. Network Events
         if let Ok(event) = event_rx.try_recv() {
             match event {
+                AppEvent::Status(s) => app_state.message = s,
+                AppEvent::Error(s) => {
+                    app_state.message = format!("Error: {}", s);
+                    app_state.loading = false;
+                }
+
                 AppEvent::CalendarsLoaded(cals) => {
                     app_state.calendars = cals;
-                }
-                AppEvent::TasksLoaded(tasks) => {
-                    app_state.tasks = tasks;
-                    app_state.recalculate_view();
-                    app_state.loading = false;
-                    if app_state.tasks.is_empty() {
-                        app_state.message = "No tasks found.".to_string();
-                    } else {
-                        app_state.message = format!("Tasks: {}", app_state.tasks.len());
+                    // FIX: Respect Default Calendar Config
+                    if let Some(def) = &default_cal {
+                        if let Some(found) = app_state
+                            .calendars
+                            .iter()
+                            .find(|c| c.name == *def || c.href == *def)
+                        {
+                            app_state.active_cal_href = Some(found.href.clone());
+                        }
                     }
+                    // Fallback
+                    if app_state.active_cal_href.is_none() && !app_state.calendars.is_empty() {
+                        app_state.active_cal_href = Some(app_state.calendars[0].href.clone());
+                    }
+                    // If cache hasn't arrived yet, this might show empty, but that's fine.
+                    app_state.refresh_filtered_view();
                 }
-                AppEvent::TaskUpdated(_) => {}
-                AppEvent::Error(msg) => {
-                    app_state.message = format!("Error: {}", msg);
+
+                AppEvent::TasksLoaded(results) => {
+                    for (href, tasks) in results {
+                        app_state.store.insert(href.clone(), tasks.clone());
+                        let _ = Cache::save(&href, &tasks);
+                    }
+                    app_state.refresh_filtered_view();
+                    // Don't set loading=false here blindly, maybe wait for "Ready" status or check logic
+                    // But generally safe to say we have data now.
                     app_state.loading = false;
-                }
-                AppEvent::Status(msg) => {
-                    app_state.message = msg;
                 }
             }
         }
 
+        // B. User Input
         if crossterm::event::poll(Duration::from_millis(50))? {
             let event = event::read()?;
             match event {
@@ -531,14 +270,26 @@ pub async fn run() -> Result<()> {
                         KeyCode::Enter => {
                             if !app_state.input_buffer.is_empty() {
                                 let summary = app_state.input_buffer.clone();
-                                let _ = action_tx.send(Action::CreateTask(summary)).await;
-                                app_state.input_buffer.clear();
+                                let target_href = app_state.active_cal_href.clone().or_else(|| {
+                                    app_state.calendars.first().map(|c| c.href.clone())
+                                });
+
+                                if let Some(href) = target_href {
+                                    let mut task = Task::new(&summary);
+                                    task.calendar_href = href.clone();
+                                    if let Some(list) = app_state.store.calendars.get_mut(&href) {
+                                        list.push(task.clone());
+                                    }
+                                    app_state.refresh_filtered_view();
+                                    let _ = action_tx.send(Action::CreateTask(summary, href)).await;
+                                }
                                 app_state.mode = InputMode::Normal;
+                                app_state.reset_input();
                             }
                         }
                         KeyCode::Esc => {
                             app_state.mode = InputMode::Normal;
-                            app_state.input_buffer.clear();
+                            app_state.reset_input();
                         }
                         KeyCode::Char(c) => app_state.enter_char(c),
                         KeyCode::Backspace => app_state.delete_char(),
@@ -548,16 +299,29 @@ pub async fn run() -> Result<()> {
                     InputMode::Editing => match key.code {
                         KeyCode::Enter => {
                             if let Some(idx) = app_state.editing_index {
-                                let new_text = app_state.input_buffer.clone();
-                                let _ = action_tx.send(Action::EditTask(idx, new_text)).await;
+                                if let Some(view_task) = app_state.tasks.get(idx).cloned() {
+                                    let cal_href = view_task.calendar_href.clone();
+                                    if let Some(list) = app_state.store.calendars.get_mut(&cal_href)
+                                    {
+                                        if let Some(t) =
+                                            list.iter_mut().find(|t| t.uid == view_task.uid)
+                                        {
+                                            t.apply_smart_input(&app_state.input_buffer);
+                                            let t_clone = t.clone();
+                                            let _ =
+                                                action_tx.send(Action::UpdateTask(t_clone)).await;
+                                        }
+                                    }
+                                    app_state.refresh_filtered_view();
+                                }
                             }
-                            app_state.input_buffer.clear();
-                            app_state.editing_index = None;
                             app_state.mode = InputMode::Normal;
+                            app_state.reset_input();
+                            app_state.editing_index = None;
                         }
                         KeyCode::Esc => {
                             app_state.mode = InputMode::Normal;
-                            app_state.input_buffer.clear();
+                            app_state.reset_input();
                             app_state.editing_index = None;
                         }
                         KeyCode::Char(c) => app_state.enter_char(c),
@@ -570,13 +334,25 @@ pub async fn run() -> Result<()> {
                     InputMode::EditingDescription => match key.code {
                         KeyCode::Enter => {
                             if let Some(idx) = app_state.editing_index {
-                                let new_desc = app_state.input_buffer.clone();
-                                let _ =
-                                    action_tx.send(Action::EditDescription(idx, new_desc)).await;
+                                if let Some(view_task) = app_state.tasks.get(idx).cloned() {
+                                    let cal_href = view_task.calendar_href.clone();
+                                    if let Some(list) = app_state.store.calendars.get_mut(&cal_href)
+                                    {
+                                        if let Some(t) =
+                                            list.iter_mut().find(|t| t.uid == view_task.uid)
+                                        {
+                                            t.description = app_state.input_buffer.clone();
+                                            let t_clone = t.clone();
+                                            let _ =
+                                                action_tx.send(Action::UpdateTask(t_clone)).await;
+                                        }
+                                    }
+                                    app_state.refresh_filtered_view();
+                                }
                             }
+                            app_state.mode = InputMode::Normal;
                             app_state.reset_input();
                             app_state.editing_index = None;
-                            app_state.mode = InputMode::Normal;
                         }
                         KeyCode::Esc => {
                             app_state.mode = InputMode::Normal;
@@ -598,11 +374,11 @@ pub async fn run() -> Result<()> {
                         KeyCode::Right => app_state.move_cursor_right(),
                         KeyCode::Char(c) => {
                             app_state.enter_char(c);
-                            app_state.recalculate_view();
+                            app_state.refresh_filtered_view();
                         }
                         KeyCode::Backspace => {
                             app_state.delete_char();
-                            app_state.recalculate_view();
+                            app_state.refresh_filtered_view();
                         }
                         _ => {}
                     },
@@ -612,24 +388,62 @@ pub async fn run() -> Result<()> {
                             let _ = action_tx.send(Action::Quit).await;
                             break;
                         }
-
                         KeyCode::Char('/') => {
                             app_state.mode = InputMode::Searching;
                             app_state.reset_input();
-                            app_state.recalculate_view();
-                        }
-                        KeyCode::Esc => {
-                            app_state.reset_input();
-                            app_state.recalculate_view();
                         }
                         KeyCode::Tab => app_state.toggle_focus(),
+
+                        KeyCode::Char('1') => {
+                            app_state.sidebar_mode = SidebarMode::Calendars;
+                            app_state.refresh_filtered_view();
+                        }
+                        KeyCode::Char('2') => {
+                            app_state.sidebar_mode = SidebarMode::Categories;
+                            app_state.refresh_filtered_view();
+                        }
+                        KeyCode::Char('m') => {
+                            app_state.match_all_categories = !app_state.match_all_categories;
+                            app_state.refresh_filtered_view();
+                        }
+                        KeyCode::Char('H') => {
+                            app_state.hide_completed = !app_state.hide_completed;
+                            app_state.refresh_filtered_view();
+                        }
+
+                        KeyCode::Down | KeyCode::Char('j') => app_state.next(),
+                        KeyCode::Up | KeyCode::Char('k') => app_state.previous(),
+                        KeyCode::PageDown => app_state.jump_forward(10),
+                        KeyCode::PageUp => app_state.jump_backward(10),
+
                         KeyCode::Enter => {
                             if app_state.active_focus == Focus::Sidebar {
-                                if let Some(idx) = app_state.cal_state.selected() {
-                                    if idx < app_state.calendars.len() {
-                                        let href = app_state.calendars[idx].href.clone();
-                                        let _ = action_tx.send(Action::SwitchCalendar(href)).await;
-                                        app_state.active_focus = Focus::Main;
+                                match app_state.sidebar_mode {
+                                    SidebarMode::Calendars => {
+                                        if let Some(idx) = app_state.cal_state.selected() {
+                                            if let Some(href) =
+                                                app_state.calendars.get(idx).map(|c| c.href.clone())
+                                            {
+                                                app_state.active_cal_href = Some(href.clone());
+                                                app_state.refresh_filtered_view();
+                                                let _ = action_tx
+                                                    .send(Action::SwitchCalendar(href))
+                                                    .await;
+                                            }
+                                        }
+                                    }
+                                    SidebarMode::Categories => {
+                                        let cats = app_state.store.get_all_categories();
+                                        if let Some(idx) = app_state.cal_state.selected() {
+                                            if let Some(c) = cats.get(idx) {
+                                                if app_state.selected_categories.contains(c) {
+                                                    app_state.selected_categories.remove(c);
+                                                } else {
+                                                    app_state.selected_categories.insert(c.clone());
+                                                }
+                                                app_state.refresh_filtered_view();
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -637,75 +451,170 @@ pub async fn run() -> Result<()> {
                         KeyCode::Char('a') => {
                             app_state.mode = InputMode::Creating;
                             app_state.reset_input();
-                            app_state.message = "Example: Buy cat food @tomorrow !1".to_string();
+                            app_state.message =
+                                "New Task (e.g. 'Buy Milk !1 @tomorrow')...".to_string();
                         }
                         KeyCode::Char('e') => {
                             if app_state.active_focus == Focus::Main {
-                                if let Some(idx) = app_state.get_selected_master_index() {
-                                    let task = &app_state.tasks[idx];
+                                let smart_str =
+                                    app_state.get_selected_task().map(|t| t.to_smart_string());
+                                if let Some(s) = smart_str {
+                                    app_state.editing_index = app_state.list_state.selected();
+                                    app_state.input_buffer = s;
+                                    app_state.cursor_position =
+                                        app_state.input_buffer.chars().count();
                                     app_state.mode = InputMode::Editing;
-                                    let text = task.to_smart_string();
-                                    app_state.input_buffer = text.clone();
-                                    app_state.cursor_position = text.chars().count();
-                                    app_state.editing_index = Some(idx);
                                 }
                             }
                         }
                         KeyCode::Char('E') => {
                             if app_state.active_focus == Focus::Main {
-                                if let Some(idx) = app_state.get_selected_master_index() {
-                                    let task = &app_state.tasks[idx];
+                                let desc =
+                                    app_state.get_selected_task().map(|t| t.description.clone());
+                                if let Some(d) = desc {
+                                    app_state.editing_index = app_state.list_state.selected();
+                                    app_state.input_buffer = d;
+                                    app_state.cursor_position =
+                                        app_state.input_buffer.chars().count();
                                     app_state.mode = InputMode::EditingDescription;
-                                    let text = task.description.clone();
-                                    app_state.input_buffer = text.clone();
-                                    app_state.cursor_position = text.chars().count();
-                                    app_state.editing_index = Some(idx);
                                 }
                             }
                         }
-                        KeyCode::Down | KeyCode::Char('j') => app_state.next(),
-                        KeyCode::Up | KeyCode::Char('k') => app_state.previous(),
-                        KeyCode::PageDown => app_state.jump_forward(10),
-                        KeyCode::PageUp => app_state.jump_backward(10),
                         KeyCode::Char(' ') => {
                             if app_state.active_focus == Focus::Main {
-                                if let Some(idx) = app_state.get_selected_master_index() {
-                                    let _ = action_tx.send(Action::ToggleTask(idx)).await;
+                                if let Some(task) = app_state.get_selected_task().cloned() {
+                                    let cal_href = task.calendar_href.clone();
+                                    if let Some(list) = app_state.store.calendars.get_mut(&cal_href)
+                                    {
+                                        if let Some(t) = list.iter_mut().find(|t| t.uid == task.uid)
+                                        {
+                                            t.completed = !t.completed;
+                                            let t_flipped = t.clone();
+                                            let _ =
+                                                action_tx.send(Action::ToggleTask(t_flipped)).await;
+                                        }
+                                    }
+                                    app_state.refresh_filtered_view();
                                 }
                             }
                         }
                         KeyCode::Char('d') => {
                             if app_state.active_focus == Focus::Main {
-                                if let Some(idx) = app_state.get_selected_master_index() {
-                                    let _ = action_tx.send(Action::DeleteTask(idx)).await;
+                                if let Some(task) = app_state.get_selected_task().cloned() {
+                                    let cal_href = task.calendar_href.clone();
+                                    if let Some(list) = app_state.store.calendars.get_mut(&cal_href)
+                                    {
+                                        list.retain(|t| t.uid != task.uid);
+                                    }
+                                    app_state.refresh_filtered_view();
+                                    let _ = action_tx.send(Action::DeleteTask(task)).await;
                                 }
                             }
                         }
                         KeyCode::Char('+') => {
                             if app_state.active_focus == Focus::Main {
-                                if let Some(idx) = app_state.get_selected_master_index() {
-                                    let _ = action_tx.send(Action::ChangePriority(idx, 1)).await;
+                                if let Some(view_task) = app_state.get_selected_task().cloned() {
+                                    let cal_href = view_task.calendar_href.clone();
+                                    if let Some(list) = app_state.store.calendars.get_mut(&cal_href)
+                                    {
+                                        if let Some(t) =
+                                            list.iter_mut().find(|t| t.uid == view_task.uid)
+                                        {
+                                            let new_prio = match t.priority {
+                                                0 => 9,
+                                                9 => 5,
+                                                5 => 1,
+                                                1 => 1,
+                                                _ => 5,
+                                            };
+                                            if new_prio != t.priority {
+                                                t.priority = new_prio;
+                                                let t_clone = t.clone();
+                                                let _ = action_tx
+                                                    .send(Action::UpdateTask(t_clone))
+                                                    .await;
+                                            }
+                                        }
+                                    }
+                                    app_state.refresh_filtered_view();
                                 }
                             }
                         }
                         KeyCode::Char('-') => {
                             if app_state.active_focus == Focus::Main {
-                                if let Some(idx) = app_state.get_selected_master_index() {
-                                    let _ = action_tx.send(Action::ChangePriority(idx, -1)).await;
+                                if let Some(view_task) = app_state.get_selected_task().cloned() {
+                                    let cal_href = view_task.calendar_href.clone();
+                                    if let Some(list) = app_state.store.calendars.get_mut(&cal_href)
+                                    {
+                                        if let Some(t) =
+                                            list.iter_mut().find(|t| t.uid == view_task.uid)
+                                        {
+                                            let new_prio = match t.priority {
+                                                1 => 5,
+                                                5 => 9,
+                                                9 => 0,
+                                                0 => 0,
+                                                _ => 0,
+                                            };
+                                            if new_prio != t.priority {
+                                                t.priority = new_prio;
+                                                let t_clone = t.clone();
+                                                let _ = action_tx
+                                                    .send(Action::UpdateTask(t_clone))
+                                                    .await;
+                                            }
+                                        }
+                                    }
+                                    app_state.refresh_filtered_view();
                                 }
                             }
                         }
                         KeyCode::Char('.') | KeyCode::Char('>') => {
                             if app_state.active_focus == Focus::Main {
-                                if let Some(idx) = app_state.get_selected_master_index() {
-                                    let _ = action_tx.send(Action::IndentTask(idx)).await;
+                                if let Some(idx) = app_state.list_state.selected() {
+                                    if idx > 0 && idx < app_state.tasks.len() {
+                                        let parent_uid = app_state.tasks[idx - 1].uid.clone();
+                                        let current_uid = app_state.tasks[idx].uid.clone();
+                                        let cal_href = app_state.tasks[idx].calendar_href.clone();
+                                        if let Some(list) =
+                                            app_state.store.calendars.get_mut(&cal_href)
+                                        {
+                                            if let Some(t) =
+                                                list.iter_mut().find(|t| t.uid == current_uid)
+                                            {
+                                                if t.parent_uid != Some(parent_uid.clone()) {
+                                                    t.parent_uid = Some(parent_uid);
+                                                    let t_clone = t.clone();
+                                                    let _ = action_tx
+                                                        .send(Action::UpdateTask(t_clone))
+                                                        .await;
+                                                }
+                                            }
+                                        }
+                                        app_state.refresh_filtered_view();
+                                    }
                                 }
                             }
                         }
                         KeyCode::Char(',') | KeyCode::Char('<') => {
                             if app_state.active_focus == Focus::Main {
-                                if let Some(idx) = app_state.get_selected_master_index() {
-                                    let _ = action_tx.send(Action::OutdentTask(idx)).await;
+                                if let Some(view_task) = app_state.get_selected_task().cloned() {
+                                    let cal_href = view_task.calendar_href.clone();
+                                    if let Some(list) = app_state.store.calendars.get_mut(&cal_href)
+                                    {
+                                        if let Some(t) =
+                                            list.iter_mut().find(|t| t.uid == view_task.uid)
+                                        {
+                                            if t.parent_uid.is_some() {
+                                                t.parent_uid = None;
+                                                let t_clone = t.clone();
+                                                let _ = action_tx
+                                                    .send(Action::UpdateTask(t_clone))
+                                                    .await;
+                                            }
+                                        }
+                                    }
+                                    app_state.refresh_filtered_view();
                                 }
                             }
                         }

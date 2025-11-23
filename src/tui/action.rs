@@ -1,25 +1,30 @@
 use crate::model::{CalendarListEntry, Task};
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SidebarMode {
+    Calendars,
+    Categories,
+}
+
 #[derive(Debug)]
 pub enum Action {
+    // Navigation (Fetch specific)
     SwitchCalendar(String),
-    ToggleTask(usize),
-    CreateTask(String),
-    EditTask(usize, String),
-    EditDescription(usize, String),
-    DeleteTask(usize),
-    ChangePriority(usize, i8),
-    IndentTask(usize),
-    OutdentTask(usize),
+
+    // CRUD
+    CreateTask(String, String),
+    UpdateTask(Task),
+    ToggleTask(Task),
+    DeleteTask(Task),
+
+    // Lifecycle
     Quit,
 }
 
 #[derive(Debug)]
 pub enum AppEvent {
     CalendarsLoaded(Vec<CalendarListEntry>),
-    TasksLoaded(Vec<Task>),
-    #[allow(dead_code)]
-    TaskUpdated(Task),
+    TasksLoaded(Vec<(String, Vec<Task>)>),
     Error(String),
     Status(String),
 }

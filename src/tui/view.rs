@@ -1,3 +1,4 @@
+use crate::tui::action::SidebarMode;
 use crate::tui::state::{AppState, Focus, InputMode};
 use ratatui::{
     Frame,
@@ -24,21 +25,55 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         .split(h_chunks[1]);
 
     // --- Sidebar ---
-    let cal_items: Vec<ListItem> = state
-        .calendars
-        .iter()
-        .map(|c| ListItem::new(Line::from(c.name.as_str())))
-        .collect();
     let sidebar_style = if state.active_focus == Focus::Sidebar {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let sidebar = List::new(cal_items)
+
+    let (sidebar_title, sidebar_items) = match state.sidebar_mode {
+        SidebarMode::Calendars => {
+            let items: Vec<ListItem> = state
+                .calendars
+                .iter()
+                .map(|c| {
+                    let prefix = if Some(&c.href) == state.active_cal_href.as_ref() {
+                        "* "
+                    } else {
+                        "  "
+                    };
+                    ListItem::new(Line::from(format!("{}{}", prefix, c.name)))
+                })
+                .collect();
+            (" Calendars [1] ".to_string(), items) // Return String
+        }
+        SidebarMode::Categories => {
+            let all_cats = state.store.get_all_categories();
+            let items: Vec<ListItem> = all_cats
+                .iter()
+                .map(|c| {
+                    let selected = if state.selected_categories.contains(c) {
+                        "[x]"
+                    } else {
+                        "[ ]"
+                    };
+                    ListItem::new(Line::from(format!("{} {}", selected, c)))
+                })
+                .collect();
+            let logic = if state.match_all_categories {
+                "AND"
+            } else {
+                "OR"
+            };
+            (format!(" Tags [2] ({}) ", logic), items) // Return String
+        }
+    };
+
+    let sidebar = List::new(sidebar_items)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Calendars ")
+                .title(sidebar_title)
                 .border_style(sidebar_style),
         )
         .highlight_style(
@@ -50,10 +85,9 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
 
     // --- Task List ---
     let task_items: Vec<ListItem> = state
-        .view_indices
+        .tasks
         .iter()
-        .map(|&idx| {
-            let t = &state.tasks[idx];
+        .map(|t| {
             let style = match t.priority {
                 1..=4 => Style::default().fg(Color::Red),
                 5 => Style::default().fg(Color::Yellow),
@@ -64,13 +98,21 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                 Some(d) => format!(" ({})", d.format("%d/%m")),
                 None => "".to_string(),
             };
-            let indent = "  ".repeat(t.depth);
+
+            // Logic: Only indent if in Calendar Mode (and not searching)
+            // Consistent with GUI
+            let show_indent = state.active_cal_href.is_some() && state.mode != InputMode::Searching;
+            let indent = if show_indent {
+                "  ".repeat(t.depth)
+            } else {
+                "".to_string()
+            };
+
             let recur_str = if t.rrule.is_some() { " (R)" } else { "" };
 
-            // Show categories in TUI
             let mut cat_str = String::new();
-            for cat in &t.categories {
-                cat_str.push_str(&format!(" #{}", cat));
+            if !t.categories.is_empty() {
+                cat_str = format!(" [{}]", t.categories.join(", "));
             }
 
             let summary = format!(
@@ -86,11 +128,13 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
     } else {
         Style::default()
     };
+
     let title = if state.loading {
         " Tasks (Loading...) ".to_string()
     } else {
-        format!(" Tasks ({}) ", state.view_indices.len())
+        format!(" Tasks ({}) ", state.tasks.len())
     };
+
     let task_list = List::new(task_items)
         .block(
             Block::default()
@@ -105,9 +149,8 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         );
     f.render_stateful_widget(task_list, main_chunks[0], &mut state.list_state);
 
-    // --- Details Pane ---
-    let details_text = if let Some(idx) = state.get_selected_master_index() {
-        let task = &state.tasks[idx];
+    // --- Details ---
+    let details_text = if let Some(task) = state.get_selected_task() {
         if task.description.is_empty() {
             "No description.".to_string()
         } else {
@@ -122,7 +165,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         .block(Block::default().borders(Borders::ALL).title(" Details "));
     f.render_widget(details, main_chunks[1]);
 
-    // --- Footer / Input ---
+    // --- Footer ---
     let footer_area = v_chunks[1];
     match state.mode {
         InputMode::Creating
@@ -156,8 +199,17 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                         .borders(Borders::LEFT | Borders::TOP | Borders::BOTTOM)
                         .title(" Status "),
                 );
-            let help_text = "Tab:View | /:Find | a:Add | e:Title | E:Desc | d:Del";
-            let help = Paragraph::new(help_text)
+
+            // Dynamic Help Text
+            let help_str = match state.active_focus {
+                Focus::Sidebar => match state.sidebar_mode {
+                    SidebarMode::Calendars => "Enter:Select | 2:Tags",
+                    SidebarMode::Categories => "Enter:Toggle | m:Match(AND/OR) | 1:Cals",
+                },
+                Focus::Main => "/:Find | a:Add | e:Title | E:Desc | d:Del | H:Hide",
+            };
+
+            let help = Paragraph::new(help_str)
                 .style(Style::default().fg(Color::DarkGray))
                 .alignment(Alignment::Right)
                 .block(
