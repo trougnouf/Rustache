@@ -69,6 +69,36 @@ jobs:
             cfait-linux-${{ github.ref_name }}.tar.gz
             target/debian/*.deb
 
+  build-windows:
+      runs-on: windows-latest
+      steps:
+        - uses: actions/checkout@v3
+
+        - name: Build Release
+          run: cargo build --release --features gui
+
+        - name: Create Archive
+          run: |
+            # Create a directory to stage files
+            New-Item -ItemType Directory -Force -Path "staging"
+            
+            # Copy Binaries
+            Copy-Item "target\release\cfait.exe" -Destination "staging\"
+            Copy-Item "target\release\gui.exe" -Destination "staging\cfait-gui.exe"
+            
+            # Copy Docs
+            Copy-Item "README.md" -Destination "staging\"
+            Copy-Item "LICENSE" -Destination "staging\"
+            
+            # Create Zip
+            Compress-Archive -Path "staging\*" -DestinationPath "cfait-windows-${{ github.ref_name }}.zip"
+
+        - name: Upload Release
+          uses: softprops/action-gh-release@v1
+          if: startsWith(github.ref, 'refs/tags/')
+          with:
+            files: cfait-windows-${{ github.ref_name }}.zip
+
   package-arch:
     needs: build-linux
     runs-on: ubuntu-latest

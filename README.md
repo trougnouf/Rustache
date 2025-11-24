@@ -101,6 +101,7 @@ When adding (`a`) or editing (`e`) a task, you can use shortcuts directly in the
 * [ ] switch this todo to cfait and version control it here?
 * [ ] move to gitlab-ci?
 * [ ] publish crate
+* [ ] Implement RFC 9253 (e.g. FINISHTOSTART)
 
 ## License
 GPL3
