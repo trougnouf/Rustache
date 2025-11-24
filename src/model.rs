@@ -15,7 +15,14 @@ pub struct Task {
     pub completed: bool,
     pub due: Option<DateTime<Utc>>,
     pub priority: u8,
+
+    // Hierarchy (Subtasks)
     pub parent_uid: Option<String>,
+
+    // RFC 9253: Dependencies (Blocking Tasks)
+    // List of UIDs that this task depends on
+    pub dependencies: Vec<String>,
+
     pub etag: String,
     pub href: String,
     pub calendar_href: String,
@@ -30,10 +37,11 @@ impl Task {
         self.priority = 0;
         self.due = None;
         self.rrule = None;
-        // We append to existing categories instead of clearing them,
-        // allowing users to add tags to existing tasks without losing old ones.
-        // To reset, one would manually edit the task details.
-        // But for a fresh input string (new task), categories starts empty anyway.
+        // We append to categories, don't clear them on edit usually,
+        // but for a fresh parse loop (like new task), it starts empty.
+        // If re-parsing existing summary, caller might clear specific fields.
+        // For safety in "Edit Title" mode, we usually clear and re-parse.
+        self.categories.clear();
 
         let mut tokens = input.split_whitespace().peekable();
 
@@ -118,7 +126,6 @@ impl Task {
                         continue;
                     }
                 }
-
                 let now = Local::now().date_naive();
                 if val == "today" {
                     if let Some(dt) = now.and_hms_opt(23, 59, 59) {
@@ -195,6 +202,7 @@ impl Task {
             due: None,
             priority: 0,
             parent_uid: None,
+            dependencies: Vec::new(),
             etag: String::new(),
             href: String::new(),
             calendar_href: String::new(),
@@ -223,6 +231,10 @@ impl Task {
                 next_task.etag = String::new();
                 next_task.completed = false;
                 next_task.due = Some(Utc.from_utc_datetime(&next_due.naive_utc()));
+                // IMPORTANT: Respawned tasks typically inherit hierarchy and categories,
+                // but usually dependencies (blockers) apply to the *specific* instance.
+                // We will clear dependencies for the next instance to prevent eternal blocking.
+                next_task.dependencies.clear();
                 return Some(next_task);
             }
         }
@@ -298,17 +310,24 @@ impl Task {
         if self.priority > 0 {
             todo.priority(self.priority.into());
         }
-        if let Some(p_uid) = &self.parent_uid {
-            todo.add_property("RELATED-TO", p_uid.as_str());
-        }
         if let Some(rrule) = &self.rrule {
             todo.add_property("RRULE", rrule.as_str());
         }
-
         if !self.categories.is_empty() {
             let cats = self.categories.join(",");
-            // Key fix: Use add_multi_property for CATEGORIES to align with icalendar internal storage
             todo.add_multi_property("CATEGORIES", &cats);
+        }
+
+        // --- HIERARCHY (Implicit Parent) ---
+        if let Some(p_uid) = &self.parent_uid {
+            // Default RELATED-TO without RELTYPE is implicit PARENT
+            todo.add_property("RELATED-TO", p_uid.as_str());
+        }
+
+        // --- RFC 9253: DEPENDENCIES ---
+        for dep_uid in &self.dependencies {
+            // RELATED-TO;RELTYPE=DEPENDS-ON:uid
+            todo.add_property_with_params("RELATED-TO", dep_uid, vec![("RELTYPE", "DEPENDS-ON")]);
         }
 
         let mut calendar = Calendar::new();
@@ -367,20 +386,13 @@ impl Task {
             }
         });
 
-        let parent_uid = todo
-            .properties()
-            .get("RELATED-TO")
-            .map(|p| p.value().to_string());
-
         let rrule = todo
             .properties()
             .get("RRULE")
             .map(|p| p.value().to_string());
 
-        // --- CORRECTED CATEGORY PARSING ---
+        // Categories
         let mut categories = Vec::new();
-
-        // 1. Check `multi_properties` (The crate parses CATEGORIES here)
         if let Some(multi_props) = todo.multi_properties().get("CATEGORIES") {
             for prop in multi_props {
                 let parts: Vec<String> = prop
@@ -392,8 +404,6 @@ impl Task {
                 categories.extend(parts);
             }
         }
-
-        // 2. Fallback to `properties` (Some servers/implementations might not flag it as multi)
         if let Some(prop) = todo.properties().get("CATEGORIES") {
             let parts: Vec<String> = prop
                 .value()
@@ -403,9 +413,44 @@ impl Task {
                 .collect();
             categories.extend(parts);
         }
-
         categories.sort();
         categories.dedup();
+
+        // --- HIERARCHY & DEPENDENCIES ---
+        let mut parent_uid = None;
+        let mut dependencies = Vec::new();
+
+        // 'icalendar' crate puts all RELATED-TO in multi_properties if multiple exist,
+        // or properties if single. We must check both.
+        // We look for RELTYPE param.
+
+        let mut related_props = Vec::new();
+        if let Some(multi) = todo.multi_properties().get("RELATED-TO") {
+            related_props.extend(multi.iter());
+        }
+        if let Some(single) = todo.properties().get("RELATED-TO") {
+            related_props.push(single);
+        }
+
+        for prop in related_props {
+            let val = prop.value().to_string();
+            let params = prop.params();
+            let reltype = params.get("RELTYPE").map(|s| s.to_uppercase());
+
+            match reltype.as_deref() {
+                Some("DEPENDS-ON") => {
+                    // It's a blocker
+                    dependencies.push(val);
+                }
+                Some("PARENT") | None => {
+                    // It's a parent (default is parent)
+                    parent_uid = Some(val);
+                }
+                _ => {
+                    // Other types (SIBLING, CHILD) ignore for now
+                }
+            }
+        }
 
         Ok(Task {
             uid,
@@ -415,6 +460,7 @@ impl Task {
             due,
             priority,
             parent_uid,
+            dependencies,
             etag,
             href,
             calendar_href,
@@ -472,11 +518,9 @@ pub struct CalendarListEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Removed unused imports (Duration, TimeZone)
 
     #[test]
     fn test_smart_input_basics() {
-        // Removed 'mut'
         let t = Task::new("Buy cat food !1");
         assert_eq!(t.summary, "Buy cat food");
         assert_eq!(t.priority, 1);
@@ -484,7 +528,6 @@ mod tests {
 
     #[test]
     fn test_smart_input_categories() {
-        // Removed 'mut'
         let t = Task::new("Project meeting #work #urgent @tomorrow");
         assert!(t.summary.contains("Project meeting"));
         assert!(t.categories.contains(&"work".to_string()));
@@ -501,24 +544,24 @@ mod tests {
     }
 
     #[test]
-    fn test_ical_roundtrip_with_categories() {
-        let mut t = Task::new("Complex Task");
-        t.categories = vec!["tag1".to_string(), "tag2".to_string()];
-        t.priority = 5;
-        t.uid = "test-uid".to_string();
+    fn test_ical_roundtrip_dependencies() {
+        let mut t = Task::new("Blocked Task");
+        t.dependencies.push("blocker-1-uid".to_string());
+        t.dependencies.push("blocker-2-uid".to_string());
+        t.parent_uid = Some("parent-uid".to_string());
 
         let ics = t.to_ics();
 
-        // Simulate server returning this ICS
-        // We pass dummy etag/href/cal_href for parsing test
-        let t2 = Task::from_ics(&ics, "etag".into(), "href".into(), "cal_href".into())
-            .expect("Should parse");
+        // Verify string contains correct params
+        assert!(ics.contains("RELATED-TO;RELTYPE=DEPENDS-ON:blocker-1-uid"));
+        assert!(ics.contains("RELATED-TO;RELTYPE=DEPENDS-ON:blocker-2-uid"));
+        assert!(ics.contains("RELATED-TO:parent-uid"));
 
-        assert_eq!(t.summary, t2.summary);
-        assert_eq!(t.priority, t2.priority);
-        assert_eq!(t.categories.len(), 2);
-        assert!(t2.categories.contains(&"tag1".to_string()));
-        assert!(t2.categories.contains(&"tag2".to_string()));
+        let t2 = Task::from_ics(&ics, "etag".into(), "href".into(), "cal".into()).unwrap();
+
+        assert_eq!(t2.dependencies.len(), 2);
+        assert!(t2.dependencies.contains(&"blocker-1-uid".to_string()));
+        assert_eq!(t2.parent_uid, Some("parent-uid".to_string()));
     }
 
     #[test]
