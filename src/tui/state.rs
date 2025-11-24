@@ -22,12 +22,12 @@ pub enum InputMode {
 pub struct AppState {
     // Data
     pub store: TaskStore,
-    pub tasks: Vec<Task>, // The visible, filtered list
+    pub tasks: Vec<Task>,
     pub calendars: Vec<CalendarListEntry>,
 
     // UI State
     pub list_state: ListState,
-    pub cal_state: ListState, // Used for both Cals and Cats list
+    pub cal_state: ListState,
     pub active_focus: Focus,
     pub mode: InputMode,
     pub message: String,
@@ -79,17 +79,12 @@ impl AppState {
     }
 
     pub fn refresh_filtered_view(&mut self) {
-        // Determine Context
         let cal_filter = if self.sidebar_mode == SidebarMode::Categories {
             None
         } else {
             self.active_cal_href.as_deref()
         };
 
-        // Determine Search Text
-        // If in Searching mode, use buffer. If in Normal mode, empty (unless we want persistent search?)
-        // Let's stick to persistent search only if mode is Searching,
-        // otherwise clearing search on Escape (which resets InputMode) logic handles it.
         let search_term = if self.mode == InputMode::Searching {
             &self.input_buffer
         } else {
@@ -105,7 +100,6 @@ impl AppState {
             self.hide_completed_in_tags,
         );
 
-        // Clamp selection
         let len = self.tasks.len();
         if len == 0 {
             self.list_state.select(None);
@@ -177,9 +171,15 @@ impl AppState {
                 self.list_state.select(Some(i));
             }
             Focus::Sidebar => {
+                // FIX: Pass visibility args to get correct length
                 let len = match self.sidebar_mode {
                     SidebarMode::Calendars => self.calendars.len(),
-                    SidebarMode::Categories => self.store.get_all_categories().len(),
+                    SidebarMode::Categories => {
+                        let should_hide = self.hide_completed || self.hide_completed_in_tags;
+                        self.store
+                            .get_all_categories(should_hide, &self.selected_categories)
+                            .len()
+                    }
                 };
                 if len == 0 {
                     return;
@@ -217,9 +217,15 @@ impl AppState {
                 self.list_state.select(Some(i));
             }
             Focus::Sidebar => {
+                // FIX: Pass visibility args to get correct length
                 let len = match self.sidebar_mode {
                     SidebarMode::Calendars => self.calendars.len(),
-                    SidebarMode::Categories => self.store.get_all_categories().len(),
+                    SidebarMode::Categories => {
+                        let should_hide = self.hide_completed || self.hide_completed_in_tags;
+                        self.store
+                            .get_all_categories(should_hide, &self.selected_categories)
+                            .len()
+                    }
                 };
                 if len == 0 {
                     return;

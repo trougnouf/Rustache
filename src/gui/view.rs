@@ -1,6 +1,7 @@
 use crate::gui::message::Message;
 use crate::gui::state::{AppState, GuiApp, SidebarMode};
 use crate::model::Task as TodoTask;
+use crate::store::UNCATEGORIZED_ID;
 
 use iced::widget::{
     Rule, button, checkbox, column, container, horizontal_space, row, scrollable, text, text_input,
@@ -123,7 +124,10 @@ fn view_sidebar_calendars(app: &GuiApp) -> Element<'_, Message> {
 
 fn view_sidebar_categories(app: &GuiApp) -> Element<'_, Message> {
     let should_hide = app.hide_completed || app.hide_completed_in_tags;
-    let all_cats = app.store.get_all_categories(should_hide);
+
+    let all_cats = app
+        .store
+        .get_all_categories(should_hide, &app.selected_categories);
 
     let logic_text = if app.match_all_categories {
         "Match: AND"
@@ -166,7 +170,15 @@ fn view_sidebar_categories(app: &GuiApp) -> Element<'_, Message> {
             .map(|cat| {
                 let is_selected = app.selected_categories.contains(&cat);
                 let cat_clone = cat.clone();
-                checkbox(format!("#{}", cat), is_selected)
+
+                // CHANGED: Display Name logic
+                let display_name = if cat == UNCATEGORIZED_ID {
+                    "Uncategorized".to_string() // No hashtag for this one
+                } else {
+                    format!("#{}", cat)
+                };
+
+                checkbox(display_name, is_selected)
                     .size(18)
                     .text_size(16)
                     .on_toggle(move |_| Message::CategoryToggled(cat_clone.clone()))

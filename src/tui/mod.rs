@@ -433,7 +433,14 @@ pub async fn run() -> Result<()> {
                                         }
                                     }
                                     SidebarMode::Categories => {
-                                        let cats = app_state.store.get_all_categories();
+                                        let should_hide = app_state.hide_completed
+                                            || app_state.hide_completed_in_tags;
+
+                                        let cats = app_state.store.get_all_categories(
+                                            should_hide,
+                                            &app_state.selected_categories,
+                                        );
+
                                         if let Some(idx) = app_state.cal_state.selected() {
                                             if let Some(c) = cats.get(idx) {
                                                 if app_state.selected_categories.contains(c) {

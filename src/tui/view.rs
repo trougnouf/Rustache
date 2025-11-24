@@ -1,3 +1,4 @@
+use crate::store::UNCATEGORIZED_ID;
 use crate::tui::action::SidebarMode;
 use crate::tui::state::{AppState, Focus, InputMode};
 use ratatui::{
@@ -45,11 +46,13 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                     ListItem::new(Line::from(format!("{}{}", prefix, c.name)))
                 })
                 .collect();
-            (" Calendars [1] ".to_string(), items) // Return String
+            (" Calendars [1] ".to_string(), items)
         }
         SidebarMode::Categories => {
             let should_hide = state.hide_completed || state.hide_completed_in_tags;
-            let all_cats = state.store.get_all_categories(should_hide);
+            let all_cats = state
+                .store
+                .get_all_categories(should_hide, &state.selected_categories);
 
             let items: Vec<ListItem> = all_cats
                 .iter()
@@ -59,7 +62,14 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                     } else {
                         "[ ]"
                     };
-                    ListItem::new(Line::from(format!("{} {}", selected, c)))
+
+                    let display_name = if c == UNCATEGORIZED_ID {
+                        "Uncategorized".to_string()
+                    } else {
+                        format!("#{}", c)
+                    };
+
+                    ListItem::new(Line::from(format!("{} {}", selected, display_name)))
                 })
                 .collect();
             let logic = if state.match_all_categories {
@@ -67,7 +77,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
             } else {
                 "OR"
             };
-            (format!(" Tags [2] ({}) ", logic), items) // Return String
+            (format!(" Tags [2] ({}) ", logic), items)
         }
     };
 
@@ -101,8 +111,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                 None => "".to_string(),
             };
 
-            // Logic: Only indent if in Calendar Mode (and not searching)
-            // Consistent with GUI
             let show_indent = state.active_cal_href.is_some() && state.mode != InputMode::Searching;
             let indent = if show_indent {
                 "  ".repeat(t.depth)
@@ -202,7 +210,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                         .title(" Status "),
                 );
 
-            // Dynamic Help Text
             let help_str = match state.active_focus {
                 Focus::Sidebar => match state.sidebar_mode {
                     SidebarMode::Calendars => "Enter:Select | 2:Tags",
