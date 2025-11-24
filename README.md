@@ -4,10 +4,10 @@
 
 It features both a lightning-fast **TUI (Terminal UI)** and a modern **GUI (Graphical UI)** for desktop integration.
 
-![Cfait GUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v1.1.5_screenshot_(GUI).png)
+![Cfait GUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v0.1.6_screenshot_(GUI).png)
 *The Graphical Interface*
 
-![Cfait TUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v1.1.5_screenshot_(TUI).png)
+![Cfait TUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v0.1.6_screenshot_(TUI).png)
 *The Terminal Interface*
 
 ## Features
@@ -88,7 +88,6 @@ When adding (`a`) or editing (`e`) a task, you can use shortcuts directly in the
 *   `@daily`, `@weekly`, `@monthly`, `@yearly`, `@every 4 days`, `@every 2 weeks`, etc: Sets Recurrence.
 
 ## TODO
-* [ ] Browse by categories (multi-calendar)
 * [ ] TUI: clickable
 * [ ] CLI interface (non-interactive, e.g. --add-task or -a)
 * [ ] Unit Tests
@@ -98,7 +97,7 @@ When adding (`a`) or editing (`e`) a task, you can use shortcuts directly in the
 * [ ] TUI/GUI(/CLI): multiple instances ok
 * [ ] TUI: cursor when naming tasks
 * [ ] TUI: list keywords when naming tasks
-* [ ] switch this todo to cfait and version control it here
+* [ ] switch this todo to cfait and version control it here?
 * [ ] move to gitlab-ci?
 * [ ] publish crate
 

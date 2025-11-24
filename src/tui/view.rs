@@ -12,7 +12,8 @@ use ratatui::{
 pub fn draw(f: &mut Frame, state: &mut AppState) {
     let v_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
+        // REMOVED .as_ref() below
+        .constraints([Constraint::Min(0), Constraint::Length(3)])
         .split(f.area());
 
     let h_chunks = Layout::default()
