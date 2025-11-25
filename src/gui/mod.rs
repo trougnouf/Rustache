@@ -29,7 +29,9 @@ pub fn run() -> iced::Result {
     .theme(GuiApp::theme)
     .window(window::Settings {
         platform_specific: window::settings::PlatformSpecific {
+            #[cfg(target_os = "linux")]
             application_id: String::from("cfait"),
+
             ..Default::default()
         },
         ..Default::default()
