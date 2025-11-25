@@ -111,6 +111,7 @@ When adding (`a`) or editing (`e`) a task, you can use shortcuts directly in the
 * [ ] More Unit Tests
 * [ ] Link to calendar events
 * [ ] Dynamic width (column + main)
+* [ ] set cutoff date s.t. timed dates are not always on top (e.g. 6-months default)
 
 ## License
 GPL3

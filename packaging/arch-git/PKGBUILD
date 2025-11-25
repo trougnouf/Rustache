@@ -2,7 +2,7 @@
 pkgname=cfait-git
 _pkgname=cfait
 pkgver=v0.1.5.r5.gbbc3132
-pkgrel=1
+pkgrel=2
 pkgdesc="A simple, elegant, and lightweight CalDAV task / TODO manager (TUI & GUI) (git version)"
 arch=('x86_64')
 url="https://gitlab.com/trougnouf/cfait"
@@ -14,6 +14,7 @@ conflicts=("$_pkgname")
 source=("$_pkgname::git+$url.git")
 sha256sums=('SKIP')
 replaces=('rustycal' 'rustache' 'fairouille')
+options=('!lto')
 
 pkgver() {
   cd "$_pkgname"
