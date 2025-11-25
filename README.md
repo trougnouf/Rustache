@@ -5,11 +5,11 @@
 
 It features both a lightning-fast **TUI (Terminal UI)** and a modern **GUI (Graphical UI)** for desktop integration.
 
-![Cfait GUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v0.1.6_screenshot_(GUI).png)
-*The Graphical Interface in v0.1.6*
+![Cfait GUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v0.1.7_screenshot_(GUI).png)
+*The Graphical Interface in v0.1.7*
 
-![Cfait TUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v0.1.6_screenshot_(TUI).png)
-*The Terminal Interface in v0.1.6*
+![Cfait TUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v0.1.7_screenshot_(TUI).png)
+*The Terminal Interface in v0.1.7*
 
 ## Features
 
