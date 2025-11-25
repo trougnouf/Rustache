@@ -36,14 +36,12 @@ impl Task {
         let mut tokens = input.split_whitespace().peekable();
 
         while let Some(word) = tokens.next() {
-            if word.starts_with('!') {
-                if let Ok(p) = word[1..].parse::<u8>() {
-                    if (1..=9).contains(&p) {
+            if word.starts_with('!')
+                && let Ok(p) = word[1..].parse::<u8>()
+                    && (1..=9).contains(&p) {
                         self.priority = p;
                         continue;
                     }
-                }
-            }
 
             if word.starts_with('#') {
                 let cat = word[1..].to_string();
@@ -80,8 +78,8 @@ impl Task {
             }
 
             if word == "@every" {
-                if let Some(next_token) = tokens.peek() {
-                    if let Ok(interval) = next_token.parse::<u32>() {
+                if let Some(next_token) = tokens.peek()
+                    && let Ok(interval) = next_token.parse::<u32>() {
                         tokens.next();
                         if let Some(unit_token) = tokens.peek() {
                             let unit = unit_token.to_lowercase();
@@ -104,26 +102,22 @@ impl Task {
                             }
                         }
                     }
-                }
                 summary_words.push(word);
                 continue;
             }
 
-            if word.starts_with('@') {
-                let val = &word[1..];
-                if let Ok(date) = NaiveDate::parse_from_str(val, "%Y-%m-%d") {
-                    if let Some(dt) = date.and_hms_opt(23, 59, 59) {
+            if let Some(val) = word.strip_prefix('@') {
+                if let Ok(date) = NaiveDate::parse_from_str(val, "%Y-%m-%d")
+                    && let Some(dt) = date.and_hms_opt(23, 59, 59) {
                         self.due = Some(dt.and_utc());
                         continue;
                     }
-                }
                 let now = Local::now().date_naive();
-                if val == "today" {
-                    if let Some(dt) = now.and_hms_opt(23, 59, 59) {
+                if val == "today"
+                    && let Some(dt) = now.and_hms_opt(23, 59, 59) {
                         self.due = Some(dt.and_utc());
                         continue;
                     }
-                }
                 if val == "tomorrow" {
                     let d = now + chrono::Duration::days(1);
                     if let Some(dt) = d.and_hms_opt(23, 59, 59) {
@@ -131,8 +125,8 @@ impl Task {
                         continue;
                     }
                 }
-                if val == "next" {
-                    if let Some(unit_token) = tokens.peek() {
+                if val == "next"
+                    && let Some(unit_token) = tokens.peek() {
                         let unit = unit_token.to_lowercase();
                         let mut offset = 0;
                         if unit.starts_with("week") {
@@ -152,7 +146,6 @@ impl Task {
                             }
                         }
                     }
-                }
             }
             summary_words.push(word);
         }
@@ -422,8 +415,8 @@ impl Task {
         let unfolded = raw_ics.replace("\r\n ", "").replace("\n ", "");
 
         for line in unfolded.lines() {
-            if line.starts_with("RELATED-TO") {
-                if let Some((key_part, value)) = line.split_once(':') {
+            if line.starts_with("RELATED-TO")
+                && let Some((key_part, value)) = line.split_once(':') {
                     let value = value.trim().to_string();
                     let key_upper = key_part.to_uppercase();
 
@@ -438,7 +431,6 @@ impl Task {
                         parent_uid = Some(value);
                     }
                 }
-            }
         }
 
         Ok(Task {

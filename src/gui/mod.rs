@@ -84,8 +84,8 @@ impl GuiApp {
             &self.selected_categories,
             self.match_all_categories,
             &self.search_value,
-            self.hide_completed,         // <--- New
-            self.hide_completed_in_tags, // <--- New
+            self.hide_completed,
+            self.hide_completed_in_tags,
         );
     }
 
@@ -128,7 +128,7 @@ impl GuiApp {
                     default_calendar: self.ob_default_cal.clone(),
                     hide_completed: self.hide_completed,
                     hide_completed_in_tags: self.hide_completed_in_tags,
-                    tag_aliases: self.tag_aliases.clone(), // FIX 5: Add this field
+                    tag_aliases: self.tag_aliases.clone(),
                 };
                 Task::perform(connect_and_fetch_wrapper(config), Message::Loaded)
             }
@@ -180,7 +180,7 @@ impl GuiApp {
                         default_calendar: self.ob_default_cal.clone(),
                         hide_completed: self.hide_completed,
                         hide_completed_in_tags: self.hide_completed_in_tags,
-                        tag_aliases: self.tag_aliases.clone(), // FIX 6: Add this field
+                        tag_aliases: self.tag_aliases.clone(),
                     }
                     .save();
                 }

@@ -11,6 +11,7 @@ pub enum Action {
     SwitchCalendar(String),
 
     CreateTask(Task),
+
     UpdateTask(Task),
     ToggleTask(Task),
     DeleteTask(Task),

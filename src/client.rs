@@ -49,27 +49,19 @@ impl RustyClient {
         let base_path = self.client.base_url().path().to_string();
 
         // 1. Try directly if it looks like a calendar (resource list)
-        if let Ok(resources) = self.client.list_resources(&base_path).await {
-            if resources.iter().any(|r| r.href.ends_with(".ics")) {
+        if let Ok(resources) = self.client.list_resources(&base_path).await
+            && resources.iter().any(|r| r.href.ends_with(".ics")) {
                 return Ok(base_path);
             }
-        }
 
         // 2. Try Principal -> Home Set -> First Calendar
-        match self.client.find_current_user_principal().await {
-            Ok(Some(principal)) => {
-                if let Ok(homes) = self.client.find_calendar_home_set(&principal).await {
-                    if let Some(home_url) = homes.first() {
-                        if let Ok(cals) = self.client.find_calendars(home_url).await {
-                            if let Some(first) = cals.first() {
-                                return Ok(first.href.clone());
-                            }
+        if let Ok(Some(principal)) = self.client.find_current_user_principal().await
+            && let Ok(homes) = self.client.find_calendar_home_set(&principal).await
+                && let Some(home_url) = homes.first()
+                    && let Ok(cals) = self.client.find_calendars(home_url).await
+                        && let Some(first) = cals.first() {
+                            return Ok(first.href.clone());
                         }
-                    }
-                }
-            }
-            _ => {}
-        }
 
         // Fallback to base
         Ok(base_path)
@@ -132,8 +124,8 @@ impl RustyClient {
             .map_err(|e| format!("{:?}", e))?;
         let mut tasks = Vec::new();
         for item in fetched {
-            if let Ok(content) = item.content {
-                if !content.data.is_empty() {
+            if let Ok(content) = item.content
+                && !content.data.is_empty() {
                     // Pass calendar_href so the task knows its parent
                     if let Ok(task) = Task::from_ics(
                         &content.data,
@@ -144,7 +136,6 @@ impl RustyClient {
                         tasks.push(task);
                     }
                 }
-            }
         }
         Ok(tasks)
     }
@@ -167,11 +158,10 @@ impl RustyClient {
 
         let mut results = Vec::new();
         for handle in handles {
-            if let Ok((href, task_res)) = handle.await {
-                if let Ok(tasks) = task_res {
+            if let Ok((href, task_res)) = handle.await
+                && let Ok(tasks) = task_res {
                     results.push((href, tasks));
                 }
-            }
         }
         Ok(results)
     }

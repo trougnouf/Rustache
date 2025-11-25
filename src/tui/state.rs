@@ -50,6 +50,12 @@ pub struct AppState {
     pub tag_aliases: HashMap<String, Vec<String>>,
 }
 
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AppState {
     pub fn new() -> Self {
         let mut l_state = ListState::default();

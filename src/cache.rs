@@ -36,13 +36,12 @@ impl Cache {
     }
 
     pub fn load(key: &str) -> Result<Vec<Task>> {
-        if let Some(path) = Self::get_path(key) {
-            if path.exists() {
+        if let Some(path) = Self::get_path(key)
+            && path.exists() {
                 let json = fs::read_to_string(path)?;
                 let tasks: Vec<Task> = serde_json::from_str(&json)?;
                 return Ok(tasks);
             }
-        }
         Ok(vec![])
     }
 }

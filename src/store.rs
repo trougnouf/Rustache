@@ -135,15 +135,14 @@ impl TaskStore {
                     }
                 }
 
-                if !search_term.is_empty() {
-                    if !t
+                if !search_term.is_empty()
+                    && !t
                         .summary
                         .to_lowercase()
                         .contains(&search_term.to_lowercase())
                     {
                         return false;
                     }
-                }
 
                 true
             })
@@ -168,11 +167,10 @@ impl TaskStore {
         for dep_uid in &task.dependencies {
             // If we can't find the dependency, assume it's not blocking (or external)
             // If found and NOT completed, then we are blocked.
-            if let Some(completed) = self.get_task_status(dep_uid) {
-                if !completed {
+            if let Some(completed) = self.get_task_status(dep_uid)
+                && !completed {
                     return true;
                 }
-            }
         }
         false
     }
