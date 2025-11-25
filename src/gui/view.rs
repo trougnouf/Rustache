@@ -565,7 +565,6 @@ fn view_settings(app: &GuiApp) -> Element<'_, Message> {
         horizontal_space().width(0).into()
     };
 
-    // FIX: Wrap in container explicitly to help type inference
     let prefs: Element<_> = if is_settings {
         container(
             column![
@@ -580,6 +579,57 @@ fn view_settings(app: &GuiApp) -> Element<'_, Message> {
             .spacing(10),
         )
         .into()
+    } else {
+        horizontal_space().width(0).into()
+    };
+
+    // NEW: Alias Section
+    let aliases_ui: Element<_> = if is_settings {
+        let mut list_col = column![text("Tag Aliases").size(20)].spacing(10);
+
+        // Existing Aliases List
+        for (key, vals) in &app.tag_aliases {
+            let val_str = vals.join(", ");
+            let row_item = row![
+                text(format!("#{}", key)).width(Length::FillPortion(1)),
+                text("->").width(Length::Fixed(20.0)),
+                text(val_str).width(Length::FillPortion(2)),
+                button(text("X").size(12))
+                    .style(button::danger)
+                    .padding(5)
+                    .on_press(Message::RemoveAlias(key.clone()))
+            ]
+            .spacing(10)
+            .align_y(iced::Alignment::Center);
+            list_col = list_col.push(row_item);
+        }
+
+        // Add New Alias Form
+        let input_row = row![
+            text_input("Alias (#cfait)", &app.alias_input_key)
+                .on_input(Message::AliasKeyInput)
+                .padding(5)
+                .width(Length::FillPortion(1)),
+            text_input("Tags (dev, rust)", &app.alias_input_values)
+                .on_input(Message::AliasValueInput)
+                .padding(5)
+                .width(Length::FillPortion(2)),
+            button("Add").padding(5).on_press(Message::AddAlias)
+        ]
+        .spacing(10);
+
+        let area = container(column![list_col, Rule::horizontal(1), input_row].spacing(15))
+            .padding(10)
+            .style(|_| container::Style {
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    width: 1.0,
+                    color: Color::from_rgb(0.3, 0.3, 0.3),
+                },
+                ..Default::default()
+            });
+
+        area.into()
     } else {
         horizontal_space().width(0).into()
     };
@@ -619,10 +669,11 @@ fn view_settings(app: &GuiApp) -> Element<'_, Message> {
             .padding(10),
         picker,
         prefs,
+        aliases_ui, // Insert here
         buttons
     ]
     .spacing(15)
-    .max_width(400);
+    .max_width(500); // Increased width for alias inputs
 
     container(
         column![title, error, form]

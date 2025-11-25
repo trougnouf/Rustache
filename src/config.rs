@@ -1,6 +1,7 @@
 use anyhow::Result;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -15,6 +16,8 @@ pub struct Config {
     pub hide_completed: bool,
     #[serde(default)]
     pub hide_completed_in_tags: bool,
+    #[serde(default)]
+    pub tag_aliases: HashMap<String, Vec<String>>,
 }
 
 impl Config {

@@ -2,7 +2,7 @@ use crate::model::{CalendarListEntry, Task};
 use crate::store::TaskStore;
 use crate::tui::action::SidebarMode;
 use ratatui::widgets::ListState;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum Focus {
@@ -47,6 +47,7 @@ pub struct AppState {
     pub editing_index: Option<usize>,
 
     pub yanked_uid: Option<String>, // Clipboard for linking tasks
+    pub tag_aliases: HashMap<String, Vec<String>>,
 }
 
 impl AppState {
@@ -78,6 +79,7 @@ impl AppState {
             cursor_position: 0,
             editing_index: None,
             yanked_uid: None,
+            tag_aliases: HashMap::new(),
         }
     }
 

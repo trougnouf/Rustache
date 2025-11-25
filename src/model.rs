@@ -32,15 +32,14 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn apply_smart_input(&mut self, input: &str) {
+    // CHANGED: Now accepts an alias map
+    pub fn apply_smart_input(&mut self, input: &str, aliases: &HashMap<String, Vec<String>>) {
         let mut summary_words = Vec::new();
         self.priority = 0;
         self.due = None;
         self.rrule = None;
-        // We append to categories, don't clear them on edit usually,
-        // but for a fresh parse loop (like new task), it starts empty.
-        // If re-parsing existing summary, caller might clear specific fields.
-        // For safety in "Edit Title" mode, we usually clear and re-parse.
+        // We are parsing from scratch, so clear existing categories to avoid duplication
+        // (e.g. if user deletes #dev from the text, we want it gone from the struct)
         self.categories.clear();
 
         let mut tokens = input.split_whitespace().peekable();
@@ -60,8 +59,18 @@ impl Task {
             if word.starts_with('#') {
                 let cat = word[1..].to_string();
                 if !cat.is_empty() {
+                    // Add the primary tag
                     if !self.categories.contains(&cat) {
-                        self.categories.push(cat);
+                        self.categories.push(cat.clone());
+                    }
+
+                    // Check for Aliases / Hierarchy
+                    if let Some(expanded_tags) = aliases.get(&cat) {
+                        for extra_tag in expanded_tags {
+                            if !self.categories.contains(extra_tag) {
+                                self.categories.push(extra_tag.clone());
+                            }
+                        }
                     }
                     continue;
                 }
@@ -193,7 +202,7 @@ impl Task {
         s
     }
 
-    pub fn new(input: &str) -> Self {
+    pub fn new(input: &str, aliases: &HashMap<String, Vec<String>>) -> Self {
         let mut task = Self {
             uid: Uuid::new_v4().to_string(),
             summary: String::new(),
@@ -210,7 +219,7 @@ impl Task {
             depth: 0,
             rrule: None,
         };
-        task.apply_smart_input(input);
+        task.apply_smart_input(input, aliases);
         task
     }
 

@@ -8,16 +8,13 @@ pub enum SidebarMode {
 
 #[derive(Debug)]
 pub enum Action {
-    // Navigation (Fetch specific)
     SwitchCalendar(String),
 
-    // CRUD
-    CreateTask(String, String),
+    CreateTask(Task),
     UpdateTask(Task),
     ToggleTask(Task),
     DeleteTask(Task),
 
-    // Lifecycle
     Quit,
 }
 

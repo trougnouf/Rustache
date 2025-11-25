@@ -5,6 +5,7 @@ use crate::model::{CalendarListEntry, Task as TodoTask};
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    // ... existing messages ...
     ObUrlChanged(String),
     ObUserChanged(String),
     ObPassChanged(String),
@@ -49,8 +50,15 @@ pub enum Message {
 
     ToggleHideCompleted(bool),
     ToggleHideCompletedInTags(bool),
+
     YankTask(String),
-    ClearYank, // NEW: To un-select
+    ClearYank,
     AddDependency(String),
-    MakeChild(String), // NEW: To set parent_uid
+    MakeChild(String),
+
+    // NEW ALIAS MESSAGES
+    AliasKeyInput(String),
+    AliasValueInput(String),
+    AddAlias,
+    RemoveAlias(String),
 }

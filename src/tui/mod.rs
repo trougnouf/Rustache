@@ -42,21 +42,24 @@ pub async fn run() -> Result<()> {
         default_hook(info);
     }));
 
+    // Load Config
     let config_result = config::Config::load();
-    let (url, user, pass, default_cal, hide_completed, hide_in_tags) = match config_result {
-        Ok(cfg) => (
-            cfg.url,
-            cfg.username,
-            cfg.password,
-            cfg.default_calendar,
-            cfg.hide_completed,
-            cfg.hide_completed_in_tags,
-        ),
-        Err(_) => {
-            eprintln!("Config not found. Please run 'cfait-gui' to set up credentials.");
-            return Ok(());
-        }
-    };
+    let (url, user, pass, default_cal, hide_completed, hide_in_tags, tag_aliases) =
+        match config_result {
+            Ok(cfg) => (
+                cfg.url,
+                cfg.username,
+                cfg.password,
+                cfg.default_calendar,
+                cfg.hide_completed,
+                cfg.hide_completed_in_tags,
+                cfg.tag_aliases,
+            ),
+            Err(_) => {
+                eprintln!("Config not found. Please run 'cfait-gui' to set up credentials.");
+                return Ok(());
+            }
+        };
 
     // --- 2. TERMINAL SETUP ---
     enable_raw_mode()?;
@@ -69,12 +72,14 @@ pub async fn run() -> Result<()> {
     let mut app_state = AppState::new();
     app_state.hide_completed = hide_completed;
     app_state.hide_completed_in_tags = hide_in_tags;
+    app_state.tag_aliases = tag_aliases; // Ensure aliases are loaded into state
 
     let (action_tx, mut action_rx) = mpsc::channel(10);
     let (event_tx, mut event_rx) = mpsc::channel(10);
 
-    // --- 4. NETWORK THREAD ---
+    // --- NETWORK THREAD ---
     tokio::spawn(async move {
+        // ... (Client init, Calendar Fetch, Task Fetch remain the same) ...
         let client = match RustyClient::new(&url, &user, &pass) {
             Ok(c) => c,
             Err(e) => {
@@ -82,7 +87,6 @@ pub async fn run() -> Result<()> {
                 return;
             }
         };
-
         let _ = event_tx
             .send(AppEvent::Status("Connecting...".to_string()))
             .await;
@@ -146,9 +150,10 @@ pub async fn run() -> Result<()> {
                     }
                 },
 
-                Action::CreateTask(summary, href) => {
-                    let mut new_task = Task::new(&summary);
-                    new_task.calendar_href = href.clone();
+                // CHANGED: Receive full Task object
+                Action::CreateTask(mut new_task) => {
+                    let href = new_task.calendar_href.clone();
+                    // No Task::new here! We use the one sent from UI.
                     match client.create_task(&mut new_task).await {
                         Ok(_) => {
                             if let Ok(t) = client.get_tasks(&href).await {
@@ -178,8 +183,7 @@ pub async fn run() -> Result<()> {
 
                 Action::ToggleTask(mut task) => {
                     let href = task.calendar_href.clone();
-                    // Revert optimistic flip for the server call
-                    task.completed = !task.completed;
+                    task.completed = !task.completed; // Revert optimistic flip
                     match client.toggle_task(&mut task).await {
                         Ok(_) => {
                             let _ = event_tx.send(AppEvent::Status("Synced.".to_string())).await;
@@ -275,18 +279,24 @@ pub async fn run() -> Result<()> {
                                 });
 
                                 if let Some(href) = target_href {
-                                    let mut task = Task::new(&summary);
+                                    // CONSTRUCT TASK HERE using Aliases
+                                    let mut task = Task::new(&summary, &app_state.tag_aliases);
                                     task.calendar_href = href.clone();
+
+                                    // Optimistic Store Update
                                     if let Some(list) = app_state.store.calendars.get_mut(&href) {
                                         list.push(task.clone());
                                     }
                                     app_state.refresh_filtered_view();
-                                    let _ = action_tx.send(Action::CreateTask(summary, href)).await;
+
+                                    // CHANGED: Send full task object
+                                    let _ = action_tx.send(Action::CreateTask(task)).await;
                                 }
                                 app_state.mode = InputMode::Normal;
                                 app_state.reset_input();
                             }
                         }
+                        // ... (Esc, Char, Backspace handlers) ...
                         KeyCode::Esc => {
                             app_state.mode = InputMode::Normal;
                             app_state.reset_input();
@@ -306,7 +316,11 @@ pub async fn run() -> Result<()> {
                                         if let Some(t) =
                                             list.iter_mut().find(|t| t.uid == view_task.uid)
                                         {
-                                            t.apply_smart_input(&app_state.input_buffer);
+                                            // Pass Aliases here
+                                            t.apply_smart_input(
+                                                &app_state.input_buffer,
+                                                &app_state.tag_aliases,
+                                            );
                                             let t_clone = t.clone();
                                             let _ =
                                                 action_tx.send(Action::UpdateTask(t_clone)).await;

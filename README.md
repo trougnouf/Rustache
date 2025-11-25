@@ -16,6 +16,7 @@ It features both a lightning-fast **TUI (Terminal UI)** and a modern **GUI (Grap
 *   **Smart Input:** Add tasks naturally: `Buy cat food !1 @tomorrow` sets High Priority and Due Date automatically.
 *   **Syncs Everywhere:** Fully compatible with standard CalDAV servers (Radicale, Nextcloud, iCloud, etc.).
 *   **Tag Support:** Organize tasks across all calendars using tags (e.g., `#work`, `#urgent`).
+*   **Tag Aliases:** Define shortcuts (e.g., `#groceries`) that automatically expand into multiple tags (e.g., `#groceries`, `#shopping`, `#home`).
 *   **Dependencies:** Link tasks using RFC 9253 (Blocked By) logic.
 *   **Hierarchy Support:** Create sub-tasks and organize nested lists easily.
 *   **Multiple Calendars:** Seamlessly switch between "Work", "Personal", and other lists.
@@ -63,6 +64,11 @@ default_calendar = "Personal" # Optional: Auto-selects this list on startup
 hide_completed = false
 # Hide completed tasks only when viewing Tags/Categories
 hide_completed_in_tags = true
+
+# Tag Aliases: Automatically expand one tag into multiple
+[tag_aliases]
+groceries = ["shopping", "home"]  # Typing #groceries will add #groceries, #shopping and #home
+cfait = ["dev", "rust"]           # Typing #cfait will add #cfait, #dev and #rust
 ```
 
 ## TUI Keybindings
@@ -95,23 +101,27 @@ When adding (`a`) or editing (`e`) a task, you can use shortcuts directly in the
 *   `@2025-12-31`: Sets specific Due Date (YYYY-MM-DD).
 *   `@daily`, `@weekly`, `@monthly`, `@yearly`, `@every 4 days`, `@every 2 weeks`, etc: Sets Recurrence.
 *   `#tag` (e.g. `#Gardening`) to set a tag / category.
+*   **Aliases:** If you have configured aliases (e.g. `groceries = ["home"]`), typing `#groceries` will automatically apply `#groceries` AND `#home`.
 
 ## TODO
 * [ ] TUI: clickable
 * [ ] CLI interface (non-interactive, e.g. --add-task or -a)
 * [ ] Multi-calendar Search (Text search across everything)
+* [ ] Allow setting task reminder
 * [ ] Desktop Notifications
 * [ ] Add lightweight font w/ monochrome emojis (embedded font or iced_aw or ??? or use system standard font or use system standard icons)
-* [ ] TUI/GUI(/CLI): multiple instances ok (File locking?)
+* [ ] TUI/GUI(/CLI): multiple instances ok
 * [ ] TUI: cursor when naming tasks
-* [ ] TUI: list keywords when naming tasks
-* [ ] switch this todo to cfait and version control it here?
-* [ ] move to gitlab-ci?
 * [ ] publish crate
 * [ ] More Unit Tests
 * [ ] Link to calendar events
 * [ ] Dynamic width (column + main)
 * [ ] set cutoff date s.t. timed dates are not always on top (e.g. 6-months default)
+* [ ] Don't list "calendars" which don't have tasks capabilities
+* [ ] Allow disabling some calendars
+* [ ] Allow moving tasks from one calendar to another
+* [ ] In tag view, setting to include either all or one calendar(s)
+* [ ] hide_completed_in_tags -> default to True
 
 ## License
 GPL3

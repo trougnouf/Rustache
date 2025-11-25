@@ -60,6 +60,7 @@ impl GuiApp {
             default_calendar: self.ob_default_cal.clone(),
             hide_completed: self.hide_completed,
             hide_completed_in_tags: self.hide_completed_in_tags,
+            tag_aliases: self.tag_aliases.clone(),
         }
         .save();
     }
@@ -111,10 +112,9 @@ impl GuiApp {
             }
 
             Message::ObSubmit => {
-                self.save_config(); // Use helper
+                self.save_config();
                 self.state = AppState::Loading;
                 self.error_msg = Some("Connecting...".to_string());
-                // We reconstruct config for the async call, or just use the fields
                 let config = Config {
                     url: self.ob_url.clone(),
                     username: self.ob_user.clone(),
@@ -122,6 +122,7 @@ impl GuiApp {
                     default_calendar: self.ob_default_cal.clone(),
                     hide_completed: self.hide_completed,
                     hide_completed_in_tags: self.hide_completed_in_tags,
+                    tag_aliases: self.tag_aliases.clone(), // FIX 5: Add this field
                 };
                 Task::perform(connect_and_fetch_wrapper(config), Message::Loaded)
             }
@@ -135,6 +136,7 @@ impl GuiApp {
                     self.ob_default_cal = cfg.default_calendar;
                     self.hide_completed = cfg.hide_completed;
                     self.hide_completed_in_tags = cfg.hide_completed_in_tags;
+                    self.tag_aliases = cfg.tag_aliases; // Load Map
                 }
                 self.state = AppState::Settings;
                 Task::none()
@@ -152,6 +154,7 @@ impl GuiApp {
                 if let Ok(cfg) = Config::load() {
                     self.hide_completed = cfg.hide_completed;
                     self.hide_completed_in_tags = cfg.hide_completed_in_tags;
+                    self.tag_aliases = cfg.tag_aliases; // Load Map
                 }
 
                 self.store.clear();
@@ -171,6 +174,7 @@ impl GuiApp {
                         default_calendar: self.ob_default_cal.clone(),
                         hide_completed: self.hide_completed,
                         hide_completed_in_tags: self.hide_completed_in_tags,
+                        tag_aliases: self.tag_aliases.clone(), // FIX 6: Add this field
                     }
                     .save();
                 }
@@ -299,7 +303,7 @@ impl GuiApp {
                         if let Some(cal_href) = target_cal {
                             if let Some(tasks) = self.store.calendars.get_mut(&cal_href) {
                                 let task = &mut tasks[target_idx];
-                                task.apply_smart_input(&self.input_value);
+                                task.apply_smart_input(&self.input_value, &self.tag_aliases);
                                 task.description = self.description_value.clone();
 
                                 let task_copy = task.clone();
@@ -317,7 +321,7 @@ impl GuiApp {
                             }
                         }
                     } else {
-                        let mut new_task = TodoTask::new(&self.input_value);
+                        let mut new_task = TodoTask::new(&self.input_value, &self.tag_aliases);
                         let target_href = if let Some(h) = &self.active_cal_href {
                             h.clone()
                         } else if let Some(first) = self.calendars.first() {
@@ -373,6 +377,43 @@ impl GuiApp {
                         }
                     }
                 }
+                Task::none()
+            }
+            Message::AliasKeyInput(v) => {
+                self.alias_input_key = v;
+                Task::none()
+            }
+            Message::AliasValueInput(v) => {
+                self.alias_input_values = v;
+                Task::none()
+            }
+            Message::AddAlias => {
+                if !self.alias_input_key.is_empty() && !self.alias_input_values.is_empty() {
+                    // Parse comma separated values
+                    let tags: Vec<String> = self
+                        .alias_input_values
+                        .split(',')
+                        .map(|s| s.trim().trim_start_matches('#').to_string()) // Remove # if user typed it
+                        .filter(|s| !s.is_empty())
+                        .collect();
+
+                    if !tags.is_empty() {
+                        let key = self
+                            .alias_input_key
+                            .trim()
+                            .trim_start_matches('#')
+                            .to_string();
+                        self.tag_aliases.insert(key, tags);
+                        self.alias_input_key.clear();
+                        self.alias_input_values.clear();
+                        self.save_config();
+                    }
+                }
+                Task::none()
+            }
+            Message::RemoveAlias(key) => {
+                self.tag_aliases.remove(&key);
+                self.save_config();
                 Task::none()
             }
 
