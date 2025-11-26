@@ -365,10 +365,9 @@ impl Task {
         if let Some(rrule) = &self.rrule {
             todo.add_property("RRULE", rrule.as_str());
         }
-        if !self.categories.is_empty() {
-            let cats = self.categories.join(",");
-            todo.add_multi_property("CATEGORIES", &cats);
-        }
+        // NOTE: We do NOT add categories here using the library.
+        // The library escapes all commas, turning "A,B" into "A\,B", which treats it as one tag.
+        // We manually inject the correctly formatted line below.
 
         // --- HIERARCHY & DEPENDENCIES ---
         // Use append_multi_property to support multiple RELATED-TO lines.
@@ -385,7 +384,29 @@ impl Task {
 
         let mut calendar = Calendar::new();
         calendar.push(todo);
-        calendar.to_string()
+        let mut ics = calendar.to_string();
+
+        // Manual injection of CATEGORIES to handle comma separation correctly
+        if !self.categories.is_empty() {
+            // 1. Escape commas inside tag names, but join tags with raw commas
+            let escaped_cats: Vec<String> = self
+                .categories
+                .iter()
+                .map(|c| c.replace(',', "\\,"))
+                .collect();
+            let cat_line = format!("CATEGORIES:{}", escaped_cats.join(","));
+
+            // 2. Insert before END:VTODO
+            // We assume standard formatting where END:VTODO is at the end
+            if let Some(idx) = ics.rfind("END:VTODO") {
+                // Simple insertion (Note: strictly this should be folded if >75 chars,
+                // but most parsers handle long lines. We keep it simple for now).
+                let (start, end) = ics.split_at(idx);
+                ics = format!("{}{}\r\n{}", start, cat_line, end);
+            }
+        }
+
+        ics
     }
 
     pub fn from_ics(
@@ -675,5 +696,36 @@ mod tests {
         assert_eq!(organized[1].depth, 1);
         assert_eq!(organized[2].uid, "grand");
         assert_eq!(organized[2].depth, 2);
+    }
+
+    #[test]
+    fn test_to_ics_categories_format() {
+        let aliases = HashMap::new();
+        let mut t = Task::new("Tag Test", &aliases);
+        // Add multiple tags
+        t.categories = vec!["Work".to_string(), "Urgent".to_string()];
+
+        let ics = t.to_ics();
+        println!("ICS Output:\n{}", ics);
+
+        // Expect single line with comma separator (NOT escaped)
+        assert!(ics.contains("CATEGORIES:Urgent,Work") || ics.contains("CATEGORIES:Work,Urgent"));
+        // Ensure no backslash before the comma between tags
+        assert!(!ics.contains("Work\\,Urgent"));
+    }
+
+    #[test]
+    fn test_to_ics_categories_with_internal_comma() {
+        let aliases = HashMap::new();
+        let mut t = Task::new("Comma Test", &aliases);
+        // Tag with a comma in the name
+        t.categories = vec!["City, Country".to_string(), "Travel".to_string()];
+
+        let ics = t.to_ics();
+
+        // Expect the comma INSIDE the tag to be escaped, but the separator NOT to be
+        // e.g. CATEGORIES:City\, Country,Travel
+        assert!(ics.contains("City\\, Country"));
+        assert!(ics.contains("City\\, Country,Travel") || ics.contains("Travel,City\\, Country"));
     }
 }
