@@ -80,7 +80,7 @@ impl Default for GuiApp {
             yanked_uid: None,
 
             hide_completed: false,
-            hide_completed_in_tags: false,
+            hide_completed_in_tags: true,
 
             input_value: String::new(),
             description_value: String::new(),

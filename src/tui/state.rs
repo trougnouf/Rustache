@@ -79,7 +79,7 @@ impl AppState {
             selected_categories: HashSet::new(),
             match_all_categories: false,
             hide_completed: false,
-            hide_completed_in_tags: false,
+            hide_completed_in_tags: true,
 
             input_buffer: String::new(),
             cursor_position: 0,

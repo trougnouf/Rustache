@@ -81,3 +81,8 @@ assets = [
     ["assets/cfait.desktop", "usr/share/applications/", "644"],
     ["assets/cfait.svg", "usr/share/icons/hicolor/scalable/apps/cfait.svg", "644"],
 ]
+
+[[package.metadata.release.pre-release-replacements]]
+file = "packaging/arch/PKGBUILD"
+search = "pkgver=[0-9\\.]+"
+replace = "pkgver={{version}}"

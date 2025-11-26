@@ -103,7 +103,7 @@ When adding (`a`) or editing (`e`) a task, you can use shortcuts directly in the
 *   `@2025-12-31`: Sets specific Due Date (YYYY-MM-DD).
 *   `@daily`, `@weekly`, `@monthly`, `@yearly`, `@every 4 days`, `@every 2 weeks`, etc: Sets Recurrence.
 *   `#tag` (e.g. `#Gardening`) to set a tag / category.
-*   **Aliases:** If you have configured aliases (e.g. `groceries = ["home"]`), typing `#groceries` will automatically apply `#groceries` AND `#home`.
+    *   **Aliases:** If you have configured aliases (e.g. `groceries = ["home"]`), typing `#groceries` will automatically apply `#groceries` AND `#home`.
 
 ## License
 GPL3

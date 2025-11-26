@@ -5,6 +5,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Config {
     pub url: String,
@@ -14,8 +18,11 @@ pub struct Config {
 
     #[serde(default)]
     pub hide_completed: bool,
-    #[serde(default)]
+
+    // CHANGED: Added default = "default_true"
+    #[serde(default = "default_true")]
     pub hide_completed_in_tags: bool,
+
     #[serde(default)]
     pub tag_aliases: HashMap<String, Vec<String>>,
 }
