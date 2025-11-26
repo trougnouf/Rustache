@@ -35,6 +35,7 @@ pub enum Message {
     OutdentTask(usize),
     ToggleDetails(String),
     ConfigLoaded(Result<Config, String>),
+    ObSortMonthsChanged(String),
 
     // FIX: Use Type Alias
     Loaded(LoadedResult),

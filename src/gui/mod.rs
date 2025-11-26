@@ -6,7 +6,9 @@ use crate::cache::Cache;
 use crate::client::RustyClient;
 use crate::config::Config;
 use crate::model::{CalendarListEntry, Task as TodoTask};
+use crate::store::FilterOptions;
 
+use chrono::{Duration, Utc};
 use iced::{Element, Task, Theme, window};
 use message::Message;
 use state::{AppState, GuiApp, SidebarMode};
@@ -67,11 +69,12 @@ impl GuiApp {
             hide_completed: self.hide_completed,
             hide_completed_in_tags: self.hide_completed_in_tags,
             tag_aliases: self.tag_aliases.clone(),
+            sort_cutoff_months: self.sort_cutoff_months, // NEW
         }
         .save();
     }
 
-    // Helper to re-run filters based on current state
+    // Helper to re-run filters
     fn refresh_filtered_tasks(&mut self) {
         let cal_filter = if self.sidebar_mode == SidebarMode::Categories {
             None
@@ -79,19 +82,35 @@ impl GuiApp {
             self.active_cal_href.as_deref()
         };
 
-        self.tasks = self.store.filter(
-            cal_filter,
-            &self.selected_categories,
-            self.match_all_categories,
-            &self.search_value,
-            self.hide_completed,
-            self.hide_completed_in_tags,
-        );
+        let cutoff_date = if let Some(months) = self.sort_cutoff_months {
+            // Basic calculation: Current UTC + Months * 30 Days
+            let now = Utc::now();
+            let days = months as i64 * 30;
+            Some(now + Duration::days(days))
+        } else {
+            None
+        };
+
+        self.tasks = self.store.filter(FilterOptions {
+            active_cal_href: cal_filter,
+            selected_categories: &self.selected_categories,
+            match_all_categories: self.match_all_categories,
+            search_term: &self.search_value,
+            hide_completed_global: self.hide_completed,
+            hide_completed_in_tags: self.hide_completed_in_tags,
+            cutoff_date,
+        });
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ConfigLoaded(Ok(config)) => {
+                self.sort_cutoff_months = config.sort_cutoff_months;
+                self.ob_sort_months_input = match config.sort_cutoff_months {
+                    Some(m) => m.to_string(),
+                    None => "".to_string(),
+                };
+
                 self.state = AppState::Loading;
                 Task::perform(connect_and_fetch_wrapper(config), Message::Loaded)
             }
@@ -118,6 +137,12 @@ impl GuiApp {
             }
 
             Message::ObSubmit => {
+                if self.ob_sort_months_input.trim().is_empty() {
+                    self.sort_cutoff_months = None;
+                } else if let Ok(n) = self.ob_sort_months_input.trim().parse::<u32>() {
+                    self.sort_cutoff_months = Some(n);
+                }
+
                 self.save_config();
                 self.state = AppState::Loading;
                 self.error_msg = Some("Connecting...".to_string());
@@ -129,6 +154,7 @@ impl GuiApp {
                     hide_completed: self.hide_completed,
                     hide_completed_in_tags: self.hide_completed_in_tags,
                     tag_aliases: self.tag_aliases.clone(),
+                    sort_cutoff_months: self.sort_cutoff_months, // NEW
                 };
                 Task::perform(connect_and_fetch_wrapper(config), Message::Loaded)
             }
@@ -143,6 +169,11 @@ impl GuiApp {
                     self.hide_completed = cfg.hide_completed;
                     self.hide_completed_in_tags = cfg.hide_completed_in_tags;
                     self.tag_aliases = cfg.tag_aliases; // Load Map
+                    self.sort_cutoff_months = cfg.sort_cutoff_months;
+                    self.ob_sort_months_input = match cfg.sort_cutoff_months {
+                        Some(m) => m.to_string(),
+                        None => "".to_string(),
+                    };
                 }
                 self.state = AppState::Settings;
                 Task::none()
@@ -181,6 +212,7 @@ impl GuiApp {
                         hide_completed: self.hide_completed,
                         hide_completed_in_tags: self.hide_completed_in_tags,
                         tag_aliases: self.tag_aliases.clone(),
+                        sort_cutoff_months: self.sort_cutoff_months, // NEW
                     }
                     .save();
                 }
@@ -420,6 +452,14 @@ impl GuiApp {
             Message::RemoveAlias(key) => {
                 self.tag_aliases.remove(&key);
                 self.save_config();
+                Task::none()
+            }
+
+            Message::ObSortMonthsChanged(val) => {
+                // Only allow numbers
+                if val.is_empty() || val.chars().all(|c| c.is_numeric()) {
+                    self.ob_sort_months_input = val;
+                }
                 Task::none()
             }
 

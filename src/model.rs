@@ -228,12 +228,77 @@ impl Task {
         None
     }
 
-    pub fn organize_hierarchy(mut tasks: Vec<Task>) -> Vec<Task> {
+    pub fn compare_with_cutoff(&self, other: &Self, cutoff: Option<DateTime<Utc>>) -> Ordering {
+        // 1. Completion always pushes to bottom
+        if self.completed != other.completed {
+            return self.completed.cmp(&other.completed);
+        }
+
+        // Helper to check if a task is within the "Timed High Priority" window
+        let is_in_window = |t: &Task| -> bool {
+            match (t.due, cutoff) {
+                (Some(d), Some(limit)) => d <= limit, // It has a date, and it's before the limit
+                (Some(_), None) => true,              // No limit? All dates are "in window"
+                (None, _) => false,                   // No date? Never in window
+            }
+        };
+
+        let self_in = is_in_window(self);
+        let other_in = is_in_window(other);
+
+        match (self_in, other_in) {
+            // Case A: Both are in the "Immediate Window" -> Sort by Date
+            (true, true) => {
+                if self.due != other.due {
+                    return self.due.cmp(&other.due);
+                }
+            }
+            // Case B: Only one is in window -> It wins
+            (true, false) => return Ordering::Less,
+            (false, true) => return Ordering::Greater,
+            // Case C: Neither in window (Far future OR No Date) -> Sort by Priority
+            (false, false) => {}
+        }
+
+        // Priority Sort (1 is High, 9 is Low, 0 is None/Lowest)
+        // We normalize 0 to 10 for comparison so 1 < 5 < 9 < 0
+        let p1 = if self.priority == 0 {
+            10
+        } else {
+            self.priority
+        };
+        let p2 = if other.priority == 0 {
+            10
+        } else {
+            other.priority
+        };
+
+        if p1 != p2 {
+            return p1.cmp(&p2);
+        }
+
+        // Tie-breaker: If priorities are equal, but one has a date (even if far future),
+        // stick to Date then Alphabetical.
+        match (self.due, other.due) {
+            (Some(d1), Some(d2)) => {
+                if d1 != d2 {
+                    return d1.cmp(&d2);
+                }
+            }
+            (Some(_), None) => return Ordering::Less,
+            (None, Some(_)) => return Ordering::Greater,
+            _ => {}
+        }
+
+        self.summary.cmp(&other.summary)
+    }
+
+    pub fn organize_hierarchy(mut tasks: Vec<Task>, cutoff: Option<DateTime<Utc>>) -> Vec<Task> {
         let present_uids: HashSet<String> = tasks.iter().map(|t| t.uid.clone()).collect();
         let mut children_map: HashMap<String, Vec<Task>> = HashMap::new();
         let mut roots: Vec<Task> = Vec::new();
 
-        tasks.sort();
+        tasks.sort_by(|a, b| a.compare_with_cutoff(b, cutoff));
 
         for mut task in tasks {
             let is_orphan = match &task.parent_uid {
@@ -603,7 +668,7 @@ mod tests {
         t1.parent_uid = Some("root".to_string());
         t3.parent_uid = Some("child".to_string());
         let raw = vec![t3.clone(), t2.clone(), t1.clone()];
-        let organized = Task::organize_hierarchy(raw);
+        let organized = Task::organize_hierarchy(raw, None);
         assert_eq!(organized[0].uid, "root");
         assert_eq!(organized[0].depth, 0);
         assert_eq!(organized[1].uid, "child");

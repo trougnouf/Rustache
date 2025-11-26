@@ -44,7 +44,7 @@ pub async fn run() -> Result<()> {
 
     // Load Config
     let config_result = config::Config::load();
-    let (url, user, pass, default_cal, hide_completed, hide_in_tags, tag_aliases) =
+    let (url, user, pass, default_cal, hide_completed, hide_in_tags, tag_aliases, sort_cutoff) =
         match config_result {
             Ok(cfg) => (
                 cfg.url,
@@ -53,7 +53,8 @@ pub async fn run() -> Result<()> {
                 cfg.default_calendar,
                 cfg.hide_completed,
                 cfg.hide_completed_in_tags,
-                cfg.tag_aliases, // <--- Added this
+                cfg.tag_aliases,
+                cfg.sort_cutoff_months, // NEW
             ),
             Err(_) => {
                 eprintln!("Config not found. Please run 'cfait-gui' to set up credentials.");
@@ -72,7 +73,8 @@ pub async fn run() -> Result<()> {
     let mut app_state = AppState::new();
     app_state.hide_completed = hide_completed;
     app_state.hide_completed_in_tags = hide_in_tags;
-    app_state.tag_aliases = tag_aliases; // Ensure aliases are loaded into state
+    app_state.tag_aliases = tag_aliases;
+    app_state.sort_cutoff_months = sort_cutoff;
 
     let (action_tx, mut action_rx) = mpsc::channel(10);
     let (event_tx, mut event_rx) = mpsc::channel(10);

@@ -40,6 +40,7 @@ pub struct GuiApp {
     // Preferences
     pub hide_completed: bool,
     pub hide_completed_in_tags: bool,
+    pub sort_cutoff_months: Option<u32>,
 
     // Inputs - Main
     pub input_value: String,
@@ -61,6 +62,7 @@ pub struct GuiApp {
     pub ob_user: String,
     pub ob_pass: String,
     pub ob_default_cal: Option<String>,
+    pub ob_sort_months_input: String,
 }
 
 impl Default for GuiApp {
@@ -81,6 +83,8 @@ impl Default for GuiApp {
 
             hide_completed: false,
             hide_completed_in_tags: true,
+            sort_cutoff_months: Some(6),
+            ob_sort_months_input: "6".to_string(),
 
             input_value: String::new(),
             description_value: String::new(),

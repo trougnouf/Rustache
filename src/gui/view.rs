@@ -583,6 +583,23 @@ fn view_settings(app: &GuiApp) -> Element<'_, Message> {
         horizontal_space().width(0).into()
     };
 
+    let sorting_ui: Element<_> = if is_settings {
+        column![
+            text("Sorting Priority Cutoff (Months):"),
+            text("(Tasks due within this range are shown first. Blank = All timed first)")
+                .size(12)
+                .color(Color::from_rgb(0.6, 0.6, 0.6)),
+            text_input("6", &app.ob_sort_months_input)
+                .on_input(Message::ObSortMonthsChanged)
+                .padding(10)
+                .width(Length::Fixed(100.0))
+        ]
+        .spacing(5)
+        .into()
+    } else {
+        horizontal_space().width(0).into()
+    };
+
     // NEW: Alias Section
     let aliases_ui: Element<_> = if is_settings {
         let mut list_col = column![text("Tag Aliases").size(20)].spacing(10);
@@ -669,20 +686,25 @@ fn view_settings(app: &GuiApp) -> Element<'_, Message> {
             .padding(10),
         picker,
         prefs,
+        sorting_ui,
         aliases_ui, // Insert here
         buttons
     ]
     .spacing(15)
     .max_width(500); // Increased width for alias inputs
 
-    container(
-        column![title, error, form]
-            .spacing(20)
-            .align_x(iced::Alignment::Center),
-    )
+    let content = column![title, error, form]
+        .spacing(20)
+        .align_x(iced::Alignment::Center);
+
+    // Wrap in scrollable so buttons are accessible on small screens
+    container(scrollable(
+        container(content)
+            .width(Length::Fill)
+            .padding(20)
+            .center_x(Length::Fill),
+    ))
     .width(Length::Fill)
     .height(Length::Fill)
-    .center_x(Length::Fill)
-    .center_y(Length::Fill)
     .into()
 }

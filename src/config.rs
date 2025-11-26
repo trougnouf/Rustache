@@ -9,6 +9,11 @@ fn default_true() -> bool {
     true
 }
 
+// NEW: Default to 6 months
+fn default_cutoff() -> Option<u32> {
+    Some(6)
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Config {
     pub url: String,
@@ -18,10 +23,11 @@ pub struct Config {
 
     #[serde(default)]
     pub hide_completed: bool,
-
-    // CHANGED: Added default = "default_true"
     #[serde(default = "default_true")]
     pub hide_completed_in_tags: bool,
+
+    #[serde(default = "default_cutoff")]
+    pub sort_cutoff_months: Option<u32>,
 
     #[serde(default)]
     pub tag_aliases: HashMap<String, Vec<String>>,

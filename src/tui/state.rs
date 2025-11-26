@@ -1,5 +1,5 @@
 use crate::model::{CalendarListEntry, Task};
-use crate::store::TaskStore;
+use crate::store::{FilterOptions, TaskStore};
 use crate::tui::action::SidebarMode;
 use ratatui::widgets::ListState;
 use std::collections::{HashMap, HashSet};
@@ -40,6 +40,7 @@ pub struct AppState {
     pub match_all_categories: bool,
     pub hide_completed: bool,
     pub hide_completed_in_tags: bool,
+    pub sort_cutoff_months: Option<u32>,
 
     // Input Buffers
     pub input_buffer: String,
@@ -80,6 +81,7 @@ impl AppState {
             match_all_categories: false,
             hide_completed: false,
             hide_completed_in_tags: true,
+            sort_cutoff_months: Some(6),
 
             input_buffer: String::new(),
             cursor_position: 0,
@@ -102,14 +104,23 @@ impl AppState {
             ""
         };
 
-        self.tasks = self.store.filter(
-            cal_filter,
-            &self.selected_categories,
-            self.match_all_categories,
+        let cutoff_date = if let Some(months) = self.sort_cutoff_months {
+            let now = chrono::Utc::now();
+            let days = months as i64 * 30;
+            Some(now + chrono::Duration::days(days))
+        } else {
+            None
+        };
+
+        self.tasks = self.store.filter(FilterOptions {
+            active_cal_href: cal_filter,
+            selected_categories: &self.selected_categories,
+            match_all_categories: self.match_all_categories,
             search_term,
-            self.hide_completed,
-            self.hide_completed_in_tags,
-        );
+            hide_completed_global: self.hide_completed,
+            hide_completed_in_tags: self.hide_completed_in_tags,
+            cutoff_date,
+        });
 
         let len = self.tasks.len();
         if len == 0 {

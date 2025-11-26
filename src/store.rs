@@ -1,4 +1,5 @@
 use crate::model::Task;
+use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
 
 // Special ID for the "Uncategorized" pseudo-tag
@@ -7,6 +8,16 @@ pub const UNCATEGORIZED_ID: &str = ":::uncategorized:::";
 #[derive(Debug, Clone, Default)]
 pub struct TaskStore {
     pub calendars: HashMap<String, Vec<Task>>,
+}
+
+pub struct FilterOptions<'a> {
+    pub active_cal_href: Option<&'a str>,
+    pub selected_categories: &'a HashSet<String>,
+    pub match_all_categories: bool,
+    pub search_term: &'a str,
+    pub hide_completed_global: bool,
+    pub hide_completed_in_tags: bool,
+    pub cutoff_date: Option<DateTime<Utc>>,
 }
 
 impl TaskStore {
@@ -66,19 +77,11 @@ impl TaskStore {
         list
     }
 
-    pub fn filter(
-        &self,
-        active_cal_href: Option<&str>,
-        selected_categories: &HashSet<String>,
-        match_all_categories: bool,
-        search_term: &str,
-        hide_completed_global: bool,
-        hide_completed_in_tags: bool,
-    ) -> Vec<Task> {
+    pub fn filter(&self, options: FilterOptions) -> Vec<Task> {
         let mut raw_tasks = Vec::new();
-        let is_category_mode = active_cal_href.is_none();
+        let is_category_mode = options.active_cal_href.is_none();
 
-        if let Some(href) = active_cal_href {
+        if let Some(href) = options.active_cal_href {
             if let Some(tasks) = self.calendars.get(href) {
                 raw_tasks.extend(tasks.clone());
             }
@@ -92,21 +95,20 @@ impl TaskStore {
             .into_iter()
             .filter(|t| {
                 if t.completed {
-                    if hide_completed_global {
+                    if options.hide_completed_global {
                         return false;
                     }
-                    if is_category_mode && hide_completed_in_tags {
+                    if is_category_mode && options.hide_completed_in_tags {
                         return false;
                     }
                 }
 
-                if !selected_categories.is_empty() {
-                    // Check if we are filtering for "Uncategorized"
-                    let filter_uncategorized = selected_categories.contains(UNCATEGORIZED_ID);
+                if !options.selected_categories.is_empty() {
+                    let filter_uncategorized =
+                        options.selected_categories.contains(UNCATEGORIZED_ID);
 
-                    if match_all_categories {
-                        // AND Logic
-                        for sel in selected_categories {
+                    if options.match_all_categories {
+                        for sel in options.selected_categories {
                             if sel == UNCATEGORIZED_ID {
                                 if !t.categories.is_empty() {
                                     return false;
@@ -116,13 +118,11 @@ impl TaskStore {
                             }
                         }
                     } else {
-                        // OR Logic
                         let mut hit = false;
-                        // Special case: if searching for Uncategorized, match tasks with no tags
                         if filter_uncategorized && t.categories.is_empty() {
                             hit = true;
                         } else {
-                            for sel in selected_categories {
+                            for sel in options.selected_categories {
                                 if sel != UNCATEGORIZED_ID && t.categories.contains(sel) {
                                     hit = true;
                                     break;
@@ -135,20 +135,20 @@ impl TaskStore {
                     }
                 }
 
-                if !search_term.is_empty()
+                if !options.search_term.is_empty()
                     && !t
                         .summary
                         .to_lowercase()
-                        .contains(&search_term.to_lowercase())
-                    {
-                        return false;
-                    }
+                        .contains(&options.search_term.to_lowercase())
+                {
+                    return false;
+                }
 
                 true
             })
             .collect();
 
-        Task::organize_hierarchy(filtered)
+        Task::organize_hierarchy(filtered, options.cutoff_date)
     }
 
     pub fn get_task_status(&self, uid: &str) -> Option<bool> {
@@ -168,9 +168,10 @@ impl TaskStore {
             // If we can't find the dependency, assume it's not blocking (or external)
             // If found and NOT completed, then we are blocked.
             if let Some(completed) = self.get_task_status(dep_uid)
-                && !completed {
-                    return true;
-                }
+                && !completed
+            {
+                return true;
+            }
         }
         false
     }
@@ -192,7 +193,6 @@ mod tests {
     use std::collections::{HashMap, HashSet};
 
     // Helper to create a dummy task
-    // Updated to pass empty aliases to Task::new
     fn make_task(uid: &str, summary: &str, cal: &str, cats: Vec<&str>, completed: bool) -> Task {
         let aliases = HashMap::new();
         let mut t = Task::new(summary, &aliases);
@@ -214,12 +214,28 @@ mod tests {
         store.insert("cal_home".into(), vec![t2]);
 
         // Filter for Work
-        let res = store.filter(Some("cal_work"), &HashSet::new(), false, "", false, false);
+        let res = store.filter(FilterOptions {
+            active_cal_href: Some("cal_work"),
+            selected_categories: &HashSet::new(),
+            match_all_categories: false,
+            search_term: "",
+            hide_completed_global: false,
+            hide_completed_in_tags: false,
+            cutoff_date: None,
+        });
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].summary, "Work Task");
 
         // Filter for Global (None)
-        let res_global = store.filter(None, &HashSet::new(), false, "", false, false);
+        let res_global = store.filter(FilterOptions {
+            active_cal_href: None,
+            selected_categories: &HashSet::new(),
+            match_all_categories: false,
+            search_term: "",
+            hide_completed_global: false,
+            hide_completed_in_tags: false,
+            cutoff_date: None,
+        });
         assert_eq!(res_global.len(), 2);
     }
 
@@ -238,7 +254,15 @@ mod tests {
         selected.insert("later".to_string());
 
         // OR Logic: Should get A, B, C
-        let res = store.filter(None, &selected, false, "", false, false);
+        let res = store.filter(FilterOptions {
+            active_cal_href: None,
+            selected_categories: &selected,
+            match_all_categories: false,
+            search_term: "",
+            hide_completed_global: false,
+            hide_completed_in_tags: false,
+            cutoff_date: None,
+        });
         assert_eq!(res.len(), 3);
     }
 
@@ -256,7 +280,15 @@ mod tests {
         selected.insert("later".to_string());
 
         // AND Logic: Should only get C
-        let res = store.filter(None, &selected, true, "", false, false);
+        let res = store.filter(FilterOptions {
+            active_cal_href: None,
+            selected_categories: &selected,
+            match_all_categories: true,
+            search_term: "",
+            hide_completed_global: false,
+            hide_completed_in_tags: false,
+            cutoff_date: None,
+        });
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].summary, "C");
     }
@@ -270,11 +302,27 @@ mod tests {
         store.insert("c".into(), vec![t1, t2]);
 
         // 1. Show All
-        let res = store.filter(None, &HashSet::new(), false, "", false, false);
+        let res = store.filter(FilterOptions {
+            active_cal_href: None,
+            selected_categories: &HashSet::new(),
+            match_all_categories: false,
+            search_term: "",
+            hide_completed_global: false,
+            hide_completed_in_tags: false,
+            cutoff_date: None,
+        });
         assert_eq!(res.len(), 2);
 
         // 2. Hide Completed Globally
-        let res_hidden = store.filter(None, &HashSet::new(), false, "", true, false);
+        let res_hidden = store.filter(FilterOptions {
+            active_cal_href: None,
+            selected_categories: &HashSet::new(),
+            match_all_categories: false,
+            search_term: "",
+            hide_completed_global: true,
+            hide_completed_in_tags: false,
+            cutoff_date: None,
+        });
         assert_eq!(res_hidden.len(), 1);
         assert_eq!(res_hidden[0].summary, "Active");
     }
@@ -287,11 +335,27 @@ mod tests {
         store.insert("c".into(), vec![t1, t2]);
 
         // Calendar View: hide_completed_in_tags should NOT affect it
-        let res_cal = store.filter(Some("c"), &HashSet::new(), false, "", false, true);
+        let res_cal = store.filter(FilterOptions {
+            active_cal_href: Some("c"),
+            selected_categories: &HashSet::new(),
+            match_all_categories: false,
+            search_term: "",
+            hide_completed_global: false,
+            hide_completed_in_tags: true,
+            cutoff_date: None,
+        });
         assert_eq!(res_cal.len(), 2);
 
         // Global/Tag View: hide_completed_in_tags SHOULD affect it
-        let res_global = store.filter(None, &HashSet::new(), false, "", false, true);
+        let res_global = store.filter(FilterOptions {
+            active_cal_href: None,
+            selected_categories: &HashSet::new(),
+            match_all_categories: false,
+            search_term: "",
+            hide_completed_global: false,
+            hide_completed_in_tags: true,
+            cutoff_date: None,
+        });
         assert_eq!(res_global.len(), 1);
         assert_eq!(res_global[0].summary, "Active");
     }
