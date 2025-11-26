@@ -251,7 +251,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                     }
                 },
                 Focus::Main => {
-                    let mut s = "/:Find | a:Add | e:Edit | d:Del | y:Yank".to_string();
+                    let mut s = "/:Find | a:Add | e:Edit | E:Desc | d:Del | y:Yank".to_string();
                     // Only show Block/Child if something is in the clipboard
                     if state.yanked_uid.is_some() {
                         s.push_str(" | b:Block | c:Child");

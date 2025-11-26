@@ -83,7 +83,8 @@ cfait = ["dev", "rust"]           # Typing #cfait will add #cfait, #dev and #rus
 | **Task List** | `j` / `k` | Move Down / Up |
 | | `Space` | **Toggle** Completion |
 | | `a` | **Add** Task (Type name, press Enter) |
-| | `e` | **Edit** Title (Shift+E for Description) |
+| | `e` | **Edit** Task Title |
+| | `E` | **Edit** Task Description (Shift+e) |
 | | `d` | **Delete** Task |
 | | `y` | **Yank** (Copy ID for linking) |
 | | `b` | **Block** (Mark current task as blocked by Yanked task) |
