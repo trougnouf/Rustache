@@ -427,7 +427,6 @@ fn view_task_row<'a>(app: &'a GuiApp, index: usize, task: &'a TodoTask) -> Eleme
     if task.status != crate::model::TaskStatus::Completed
         && task.status != crate::model::TaskStatus::Cancelled
     {
-        // Start/Pause Button
         let (icon, msg_status) = if task.status == crate::model::TaskStatus::InProcess {
             ("||", crate::model::TaskStatus::NeedsAction)
         } else {
@@ -438,17 +437,6 @@ fn view_task_row<'a>(app: &'a GuiApp, index: usize, task: &'a TodoTask) -> Eleme
                 .style(btn_style)
                 .padding(5)
                 .on_press(Message::SetTaskStatus(index, msg_status)),
-        );
-
-        // Cancel Button
-        actions = actions.push(
-            button(text("ø").size(14))
-                .style(button::danger)
-                .padding(5)
-                .on_press(Message::SetTaskStatus(
-                    index,
-                    crate::model::TaskStatus::Cancelled,
-                )),
         );
     }
 
@@ -470,6 +458,22 @@ fn view_task_row<'a>(app: &'a GuiApp, index: usize, task: &'a TodoTask) -> Eleme
             .padding(5)
             .on_press(Message::EditTaskStart(index)),
     );
+
+    // Cancel Button (Moved here)
+    if task.status != crate::model::TaskStatus::Completed
+        && task.status != crate::model::TaskStatus::Cancelled
+    {
+        actions = actions.push(
+            button(text("ø").size(14))
+                .style(button::danger)
+                .padding(5)
+                .on_press(Message::SetTaskStatus(
+                    index,
+                    crate::model::TaskStatus::Cancelled,
+                )),
+        );
+    }
+
     actions = actions.push(
         button(text("Del").size(14))
             .style(button::danger)
@@ -481,10 +485,76 @@ fn view_task_row<'a>(app: &'a GuiApp, index: usize, task: &'a TodoTask) -> Eleme
     // Cast tags_row to Element to avoid type inference issues
     let tags_element: Element<'a, Message> = tags_row.into();
 
+    // --- CUSTOM MULTI-STATE CHECKBOX ---
+    // We define the look (Icon + Background Color) based on status
+    let (icon_char, bg_color, border_color) = match task.status {
+        crate::model::TaskStatus::InProcess => (
+            ">",
+            // Toned down / Muted Green
+            Color::from_rgb(0.6, 0.8, 0.6),
+            Color::from_rgb(0.4, 0.5, 0.4),
+        ),
+        crate::model::TaskStatus::Cancelled => (
+            "X",
+            Color::from_rgb(0.3, 0.2, 0.2),
+            Color::from_rgb(0.5, 0.4, 0.4),
+        ),
+        crate::model::TaskStatus::Completed => (
+            "V",
+            // The "Pretty" Bright Green
+            Color::from_rgb(0.0, 0.6, 0.0),
+            Color::from_rgb(0.0, 0.8, 0.0),
+        ),
+        crate::model::TaskStatus::NeedsAction => {
+            (" ", Color::TRANSPARENT, Color::from_rgb(0.5, 0.5, 0.5))
+        }
+    };
+
+    // We use a Button fixed to 24x24 to act as a Checkbox
+    let status_btn = button(
+        container(
+            text(icon_char)
+                .size(12) // Reduced size (was 14)
+                .color(Color::WHITE),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center),
+    )
+    .width(Length::Fixed(24.0))
+    .height(Length::Fixed(24.0))
+    .padding(0)
+    .on_press(Message::ToggleTask(index, true)) // Logic handles the toggle
+    .style(move |_theme, status| {
+        // Define how the "Box" looks
+        let base_active = button::Style {
+            background: Some(bg_color.into()),
+            text_color: Color::WHITE,
+            border: iced::Border {
+                color: border_color,
+                width: 1.0,
+                radius: 4.0.into(), // Rounded corners like a standard checkbox
+            },
+            ..button::Style::default()
+        };
+
+        match status {
+            iced::widget::button::Status::Hovered => button::Style {
+                // Slight highlight on hover
+                border: iced::Border {
+                    color: Color::WHITE,
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..base_active
+            },
+            _ => base_active,
+        }
+    });
     let row_main = row![
         indent,
-        checkbox("", task.status == crate::model::TaskStatus::Completed)
-            .on_toggle(move |b| Message::ToggleTask(index, b)),
+        status_btn,
         column![
             title_row,
             // Show tags line if there are tags OR recurrence OR task is blocked
