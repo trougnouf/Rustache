@@ -179,13 +179,22 @@ pub async fn run() -> Result<()> {
                 }
 
                 Action::UpdateTask(mut task) => {
-                    let _href = task.calendar_href.clone();
+                    let href = task.calendar_href.clone();
                     match client.update_task(&mut task).await {
                         Ok(_) => {
                             let _ = event_tx.send(AppEvent::Status("Saved.".to_string())).await;
                         }
                         Err(e) => {
-                            let _ = event_tx.send(AppEvent::Error(e)).await;
+                            let _ = event_tx
+                                .send(AppEvent::Error(format!(
+                                    "Sync failed (refreshing...): {}",
+                                    e
+                                )))
+                                .await;
+                            // Auto-heal: fetch latest state
+                            if let Ok(t) = client.get_tasks(&href).await {
+                                let _ = event_tx.send(AppEvent::TasksLoaded(vec![(href, t)])).await;
+                            }
                         }
                     }
                 }
@@ -201,7 +210,15 @@ pub async fn run() -> Result<()> {
                             }
                         }
                         Err(e) => {
-                            let _ = event_tx.send(AppEvent::Error(e)).await;
+                            let _ = event_tx
+                                .send(AppEvent::Error(format!(
+                                    "Toggle failed (refreshing...): {}",
+                                    e
+                                )))
+                                .await;
+                            if let Ok(t) = client.get_tasks(&href).await {
+                                let _ = event_tx.send(AppEvent::TasksLoaded(vec![(href, t)])).await;
+                            }
                         }
                     }
                 }
@@ -213,6 +230,40 @@ pub async fn run() -> Result<()> {
                             let _ = event_tx
                                 .send(AppEvent::Status("Deleted.".to_string()))
                                 .await;
+                        }
+                        Err(e) => {
+                            let href = task.calendar_href.clone();
+                            let _ = event_tx
+                                .send(AppEvent::Error(format!(
+                                    "Delete failed (refreshing...): {}",
+                                    e
+                                )))
+                                .await;
+                            if let Ok(t) = client.get_tasks(&href).await {
+                                let _ = event_tx.send(AppEvent::TasksLoaded(vec![(href, t)])).await;
+                            }
+                        }
+                    }
+                }
+                Action::Refresh => {
+                    let _ = event_tx
+                        .send(AppEvent::Status("Refreshing...".to_string()))
+                        .await;
+
+                    match client.get_calendars().await {
+                        Ok(cals) => {
+                            let _ = event_tx.send(AppEvent::CalendarsLoaded(cals.clone())).await;
+                            match client.get_all_tasks(&cals).await {
+                                Ok(results) => {
+                                    let _ = event_tx.send(AppEvent::TasksLoaded(results)).await;
+                                    let _ = event_tx
+                                        .send(AppEvent::Status("Refreshed.".to_string()))
+                                        .await;
+                                }
+                                Err(e) => {
+                                    let _ = event_tx.send(AppEvent::Error(e)).await;
+                                }
+                            }
                         }
                         Err(e) => {
                             let _ = event_tx.send(AppEvent::Error(e)).await;
@@ -561,6 +612,7 @@ pub async fn run() -> Result<()> {
                                 let _ = action_tx.send(Action::DeleteTask(task)).await;
                             }
                         }
+
                         KeyCode::Char('+') => {
                             if app_state.active_focus == Focus::Main
                                 && let Some(view_task) = app_state.get_selected_task().cloned()
@@ -657,6 +709,9 @@ pub async fn run() -> Result<()> {
                                 app_state.yanked_uid = Some(uid);
                                 app_state.message = format!("Yanked: {}", summary);
                             }
+                        }
+                        KeyCode::Char('r') => {
+                            let _ = action_tx.send(Action::Refresh).await;
                         }
                         KeyCode::Char('b') => {
                             // "Block this task with the yanked one"

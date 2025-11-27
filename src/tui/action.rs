@@ -15,7 +15,7 @@ pub enum Action {
     UpdateTask(Task),
     ToggleTask(Task),
     DeleteTask(Task),
-
+    Refresh,
     Quit,
 }
 
