@@ -5,11 +5,11 @@
 
 It features both an efficient **TUI (Terminal UI)** and a modern **GUI (Graphical UI)** for desktop integration.
 
-![Cfait GUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v0.2.0_screenshot_(GUI).png)
-> The Graphical Interface in v0.2.0
+![Cfait GUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v0.2.1_screenshot_(GUI).png)
+> The Graphical Interface in v0.2.1
 
-![Cfait TUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v0.2.0_screenshot_(TUI).png)
-> The Terminal Interface in v0.2.0
+![Cfait TUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v0.2.1_screenshot_(TUI).png)
+> The Terminal Interface in v0.2.1
 
 ## Features
 
@@ -22,9 +22,9 @@ It features both an efficient **TUI (Terminal UI)** and a modern **GUI (Graphica
 *   **Tag Aliases:** Define shortcuts (e.g., `#groceries`) that automatically expand into multiple tags (e.g., `#groceries`, `#shopping`, `#home`).
 *   **Dependencies:** Link tasks using RFC 9253 (Blocked By) logic.
 *   **Hierarchy Support:** Create sub-tasks and organize nested lists easily.
-*   **Multiple Calendars:** Seamlessly switch between "Work", "Personal", and other lists.
+*   **Multiple Calendars:** Seamlessly switch between "Work", "Personal", and other lists, or move tasks between them.
 *   **Offline & Local First:** Optimistic UI updates mean you never wait for the server. Possibility to use the app immediately without a server; a persistent "Local" calendar stores its tasks on disk.
-*   **Easy Migration:** When ready, export all tasks from the Local calendar to a CalDAV server with a single click.
+*   **Easy Migration:** When ready, export all tasks from the Local calendar to a CalDAV server with a single click (or keypress).
 *   **Sane sorting:** Tasks are sorted by due date, then undated tasks are ordered by priority.
 
 
@@ -123,6 +123,10 @@ hide_completed = false
 # When true, tags that have only completed tasks will be hidden from the Tags view
 hide_fully_completed_tags = true
 
+# Sorting: Tasks due more than X months away are sorted by priority only (not date)
+# Default: 6
+sort_cutoff_months = 6
+
 # Tag Aliases: Automatically expand one tag into multiple
 [tag_aliases]
 groceries = ["shopping", "home"]  # Typing #groceries will add #groceries, #shopping and #home
@@ -143,13 +147,16 @@ cfait = ["dev", "rust"]           # Typing #cfait will add #cfait, #dev and #rus
 | | `e` | **Edit** Task Title |
 | | `E` | **Edit** Task Description (Shift+e) |
 | | `d` | **Delete** Task |
+| | `M` | **Move** Task to another calendar (Shift+m) |
 | | `y` | **Yank** (Copy ID for linking) |
 | | `b` | **Block** (Mark current task as blocked by Yanked task) |
+| | `c` | **Child** (Mark current task as child of Yanked task) |
 | | `r` | **Refresh** (Force sync) |
+| | `X` | **Export** (Migrate all tasks from Local to remote, Shift+x) |
 | | `H` | Toggle **Hide Completed** tasks |
 | | `/` | **Search** / Filter Tasks |
 | | `+` / `-` | Increase / Decrease **Priority** |
-| | `>` / `<` | **Indent** / **Outdent** (Create Sub-tasks) |
+| | `>` / `<` | **Indent** / **Outdent** (Visual Sub-tasks depth) |
 | **Sidebar** | `Enter` | Select Calendar / Toggle Tag |
 | | `1` | Switch to **Calendars** View |
 | | `2` | Switch to **Tags** View |
