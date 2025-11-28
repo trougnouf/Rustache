@@ -7,6 +7,14 @@ use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use uuid::Uuid;
 
+// Add Serialize, Deserialize
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalendarListEntry {
+    pub name: String,
+    pub href: String,
+    pub color: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TaskStatus {
     NeedsAction,
@@ -695,13 +703,6 @@ impl PartialOrd for Task {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct CalendarListEntry {
-    pub name: String,
-    pub href: String,
-    pub color: Option<String>,
 }
 
 #[cfg(test)]

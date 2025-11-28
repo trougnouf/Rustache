@@ -9,6 +9,7 @@ pub type LoadedResult = Result<
         Vec<CalendarListEntry>,
         Vec<TodoTask>,
         Option<String>,
+        Option<String>, // Optional Warning/Error Message
     ),
     String,
 >;
@@ -42,6 +43,7 @@ pub enum Message {
     ObSortMonthsChanged(String),
 
     Loaded(LoadedResult),
+    Refresh,
 
     SyncSaved(Result<TodoTask, String>),
 

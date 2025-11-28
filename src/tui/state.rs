@@ -54,8 +54,11 @@ pub struct AppState {
     pub export_selection_state: ListState,
     pub export_targets: Vec<CalendarListEntry>,
 
-    pub yanked_uid: Option<String>, // Clipboard for linking tasks
+    pub yanked_uid: Option<String>,
     pub tag_aliases: HashMap<String, Vec<String>>,
+
+    // Track unsynced status
+    pub unsynced_changes: bool,
 }
 
 impl Default for AppState {
@@ -100,6 +103,8 @@ impl AppState {
             tag_aliases: HashMap::new(),
             export_selection_state: ListState::default(),
             export_targets: Vec::new(),
+
+            unsynced_changes: false, // Default false
         }
     }
 

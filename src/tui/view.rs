@@ -99,7 +99,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                 .bg(Color::Blue),
         );
     f.render_stateful_widget(sidebar, h_chunks[0], &mut state.cal_state);
-
     // --- Task List ---
     let task_items: Vec<ListItem> = state
         .tasks
@@ -179,10 +178,25 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         Style::default()
     };
 
-    let title = if state.loading {
+    // Main Title to show Offline/Unsynced status
+    let mut title = if state.loading {
         " Tasks (Loading...) ".to_string()
     } else {
         format!(" Tasks ({}) ", state.tasks.len())
+    };
+
+    if state.unsynced_changes {
+        title.push_str(" [UNSYNCED] ");
+    }
+
+    // Main List Style
+    let main_style = if state.active_focus == Focus::Main {
+        Style::default().fg(Color::Yellow)
+    } else if state.unsynced_changes {
+        // Visual hint for unsynced state in the border
+        Style::default().fg(Color::LightRed)
+    } else {
+        Style::default()
     };
 
     let task_list = List::new(task_items)

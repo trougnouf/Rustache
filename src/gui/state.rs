@@ -53,6 +53,7 @@ pub struct GuiApp {
     pub search_value: String,
     pub editing_uid: Option<String>,
     pub expanded_tasks: HashSet<String>,
+    pub unsynced_changes: bool,
 
     // Inputs - Settings (Aliases)
     pub alias_input_key: String,
@@ -102,6 +103,7 @@ impl Default for GuiApp {
             search_value: String::new(),
             editing_uid: None,
             expanded_tasks: HashSet::new(),
+            unsynced_changes: false,
 
             alias_input_key: String::new(),
             alias_input_values: String::new(),

@@ -1,5 +1,8 @@
+use crate::cache::Cache;
+use crate::config::Config;
+use crate::journal::{Action, Journal};
 use crate::model::{CalendarListEntry, Task, TaskStatus};
-use crate::storage::{LOCAL_CALENDAR_HREF, LocalStorage}; // Import Storage
+use crate::storage::{LOCAL_CALENDAR_HREF, LocalStorage};
 use libdav::CalDavClient;
 use libdav::dav::WebDavClient;
 
@@ -101,6 +104,87 @@ impl RustyClient {
         }
     }
 
+    // --- SHARED INIT LOGIC (GUI & TUI) ---
+    // This handles: Connection -> Journal Sync -> Calendar Fetch (w/ Cache fallback) -> Task Fetch
+    pub async fn connect_with_fallback(
+        config: Config,
+    ) -> Result<
+        (
+            Self,                   // Client
+            Vec<CalendarListEntry>, // Calendars
+            Vec<Task>,              // Tasks (active cal)
+            Option<String>,         // Active Href
+            Option<String>,         // Warning/Error Message
+        ),
+        String,
+    > {
+        let client = Self::new(
+            &config.url,
+            &config.username,
+            &config.password,
+            config.allow_insecure_certs,
+        )
+        .map_err(|e| e.to_string())?;
+
+        // 1. Flush Journal (Attempt)
+        let _ = client.sync_journal().await;
+
+        // 2. Fetch Calendars with Fallback
+        let (calendars, warning) = match client.get_calendars().await {
+            Ok(c) => {
+                // Success: Save to cache
+                let _ = Cache::save_calendars(&c);
+                (c, None)
+            }
+            Err(e) => {
+                let err_str = e.to_string();
+                // Fatal cert error? Fail hard.
+                if err_str.contains("InvalidCertificate") {
+                    return Err(format!("Connection failed: {}", err_str));
+                }
+                // Otherwise (Timeout/DNS/Auth), load from cache
+                let cached = Cache::load_calendars().unwrap_or_default();
+                (
+                    cached,
+                    Some("Offline Mode (Network unreachable)".to_string()),
+                )
+            }
+        };
+
+        // 3. Determine Active
+        let mut active_href = None;
+        if let Some(def_cal) = &config.default_calendar {
+            if let Some(found) = calendars
+                .iter()
+                .find(|c| c.name == *def_cal || c.href == *def_cal)
+            {
+                active_href = Some(found.href.clone());
+            }
+        }
+
+        // Only try discovery if we are online and explicit default failed
+        if active_href.is_none() && warning.is_none() {
+            if let Ok(href) = client.discover_calendar().await {
+                active_href = Some(href);
+            }
+        }
+
+        // 4. Fetch Tasks (only if online)
+        // If offline, we return empty list here. The UI (GUI/TUI) is responsible
+        // for calling Cache::load() for the active calendar.
+        let tasks = if warning.is_none() {
+            if let Some(ref h) = active_href {
+                client.get_tasks(h).await.unwrap_or_default()
+            } else {
+                vec![]
+            }
+        } else {
+            vec![]
+        };
+
+        Ok((client, calendars, tasks, active_href, warning))
+    }
+
     // --- READ OPERATIONS ---
 
     pub async fn get_calendars(&self) -> Result<Vec<CalendarListEntry>, String> {
@@ -152,6 +236,10 @@ impl RustyClient {
         }
 
         if let Some(client) = &self.client {
+            // [SYNC JOURNAL]: Before fetching fresh data, try to push pending changes
+            // so we don't overwrite our own offline edits with old server data.
+            // We ignore errors here (if sync fails, we still want to try to read).
+            let _ = self.sync_journal().await;
             // ... (Copy existing get_tasks logic) ...
             let resources = client
                 .list_resources(calendar_href)
@@ -201,7 +289,6 @@ impl RustyClient {
         }
 
         if let Some(client) = &self.client {
-            // ... (Existing network logic) ...
             let filename = format!("{}.ics", task.uid);
             let full_href = if task.calendar_href.ends_with('/') {
                 format!("{}{}", task.calendar_href, filename)
@@ -210,14 +297,28 @@ impl RustyClient {
             };
             task.href = full_href.clone();
             let bytes = task.to_ics().as_bytes().to_vec();
-            let res = client
+
+            // Attempt Network Call
+            match client
                 .create_resource(&full_href, bytes, b"text/calendar")
                 .await
-                .map_err(|e| format!("{:?}", e))?;
-            if let Some(new_etag) = res {
-                task.etag = new_etag;
+            {
+                Ok(res) => {
+                    if let Some(new_etag) = res {
+                        task.etag = new_etag;
+                    }
+                    Ok(())
+                }
+                Err(e) => {
+                    // Network failed. Queue it.
+                    eprintln!(
+                        "Network error during Create. Queuing offline. Error: {:?}",
+                        e
+                    );
+                    Journal::push(Action::Create(task.clone())).map_err(|je| je.to_string())?;
+                    Ok(()) // Return Ok to UI (Optimistic)
+                }
             }
-            Ok(())
         } else {
             Err("Offline".to_string())
         }
@@ -234,9 +335,9 @@ impl RustyClient {
         }
 
         if let Some(client) = &self.client {
-            // ... (Existing network logic) ...
             let bytes = task.to_ics().as_bytes().to_vec();
-            let res = client
+
+            match client
                 .update_resource(
                     &task.href,
                     bytes,
@@ -244,11 +345,23 @@ impl RustyClient {
                     b"text/calendar; charset=utf-8; component=VTODO",
                 )
                 .await
-                .map_err(|e| format!("{:?}", e))?;
-            if let Some(new_etag) = res {
-                task.etag = new_etag;
+            {
+                Ok(res) => {
+                    if let Some(new_etag) = res {
+                        task.etag = new_etag;
+                    }
+                    Ok(())
+                }
+                Err(e) => {
+                    // Network failed. Queue it.
+                    eprintln!(
+                        "Network error during Update. Queuing offline. Error: {:?}",
+                        e
+                    );
+                    Journal::push(Action::Update(task.clone())).map_err(|je| je.to_string())?;
+                    Ok(())
+                }
             }
-            Ok(())
         } else {
             Err("Offline".to_string())
         }
@@ -263,10 +376,18 @@ impl RustyClient {
         }
 
         if let Some(client) = &self.client {
-            client
-                .delete(&task.href, &task.etag)
-                .await
-                .map_err(|e| format!("{:?}", e))
+            match client.delete(&task.href, &task.etag).await {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    // Network failed. Queue it.
+                    eprintln!(
+                        "Network error during Delete. Queuing offline. Error: {:?}",
+                        e
+                    );
+                    Journal::push(Action::Delete(task.clone())).map_err(|je| je.to_string())?;
+                    Ok(())
+                }
+            }
         } else {
             Err("Offline".to_string())
         }
@@ -279,16 +400,14 @@ impl RustyClient {
             task.status = TaskStatus::Completed;
         }
 
-        // Logic for next_task (recurrence) is shared
         let next_task = if task.status == TaskStatus::Completed {
             task.respawn()
         } else {
             None
         };
 
-        // Save Updates
         if task.calendar_href == LOCAL_CALENDAR_HREF {
-            // Local Transaction
+            // ... (existing local logic) ...
             let mut all = LocalStorage::load().unwrap_or_default();
             if let Some(idx) = all.iter().position(|t| t.uid == task.uid) {
                 all[idx] = task.clone();
@@ -300,7 +419,7 @@ impl RustyClient {
             return Ok((task.clone(), next_task));
         }
 
-        // Network Transaction
+        // Network Transaction (Resilient via create/update_task)
         let mut created_task = None;
         if let Some(mut next) = next_task {
             self.create_task(&mut next).await?;
@@ -370,6 +489,60 @@ impl RustyClient {
             }
         }
         Ok(success_count)
+    }
+
+    pub async fn sync_journal(&self) -> Result<(), String> {
+        let mut journal = Journal::load();
+        if journal.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(client) = &self.client {
+            while let Some(action) = journal.peek_front() {
+                let result = match action {
+                    Action::Create(task) => {
+                        let filename = format!("{}.ics", task.uid);
+                        let full_href = if task.calendar_href.ends_with('/') {
+                            format!("{}{}", task.calendar_href, filename)
+                        } else {
+                            format!("{}/{}", task.calendar_href, filename)
+                        };
+                        let bytes = task.to_ics().as_bytes().to_vec();
+                        client
+                            .create_resource(&full_href, bytes, b"text/calendar")
+                            .await
+                            .map(|_| ())
+                    }
+                    Action::Update(task) => {
+                        let bytes = task.to_ics().as_bytes().to_vec();
+                        client
+                            .update_resource(
+                                &task.href,
+                                bytes,
+                                &task.etag,
+                                b"text/calendar; charset=utf-8; component=VTODO",
+                            )
+                            .await
+                            .map(|_| ())
+                    }
+                    Action::Delete(task) => client.delete(&task.href, &task.etag).await,
+                };
+
+                match result {
+                    Ok(_) => {
+                        if let Err(e) = journal.pop_front() {
+                            eprintln!("Failed to pop journal: {}", e);
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Journal Sync failed: {:?}", e);
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 

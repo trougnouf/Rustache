@@ -307,17 +307,40 @@ fn view_main_content(app: &GuiApp) -> Element<'_, Message> {
             .unwrap_or("Calendar".to_string())
     };
 
+    // --- HEADER ICONS (Unsynced + Refresh) ---
+    let mut header_icons = row![].spacing(10).align_y(iced::Alignment::Center);
+
+    if app.unsynced_changes {
+        header_icons = header_icons.push(
+            container(text("Unsynced").size(12).color(Color::WHITE))
+                .style(|_| container::Style {
+                    background: Some(Color::from_rgb(0.8, 0.5, 0.0).into()), // Orange
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+                .padding(5),
+        );
+    }
+
+    header_icons = header_icons.push(
+        button(text("F5").size(16)) // Refresh Icon
+            .style(button::secondary)
+            .padding(5)
+            .on_press(Message::Refresh),
+    );
+
     let search_input = text_input("Search...", &app.search_value)
         .on_input(Message::SearchChanged)
         .padding(5)
         .size(16);
 
-    // --- NEW EXPORT LOGIC ---
+    // --- EXPORT LOGIC ---
     let mut export_ui: Element<'_, Message> = row![].into();
 
-    // Check if we are viewing Local Calendar
     if app.active_cal_href.as_deref() == Some(LOCAL_CALENDAR_HREF) {
-        // Find valid export targets (server calendars that are not hidden)
         let targets: Vec<_> = app
             .calendars
             .iter()
@@ -325,7 +348,6 @@ fn view_main_content(app: &GuiApp) -> Element<'_, Message> {
             .collect();
 
         if !targets.is_empty() {
-            // Build a row of "Export to [Name]" buttons
             let mut row = row![
                 text("Export to:")
                     .size(14)
@@ -346,11 +368,16 @@ fn view_main_content(app: &GuiApp) -> Element<'_, Message> {
         }
     }
 
-    // Add export_ui to the header row
+    // --- ASSEMBLE HEADER ---
     let header = row![
         column![
-            text(title_text).size(40),
-            export_ui // Show it right under the title
+            row![
+                text(title_text).size(40),
+                header_icons // Icons next to title
+            ]
+            .spacing(15)
+            .align_y(iced::Alignment::Center),
+            export_ui
         ]
         .spacing(5),
         horizontal_space(),
@@ -359,6 +386,23 @@ fn view_main_content(app: &GuiApp) -> Element<'_, Message> {
     .align_y(iced::Alignment::Center);
 
     let input_area = view_input_area(app);
+
+    // --- MAIN COLUMN ASSEMBLY ---
+    let mut main_col = column![header, input_area];
+
+    // --- ERROR / OFFLINE BANNER ---
+    // FIXED: Padding moved to container() chain, removed from Style struct
+    if let Some(err) = &app.error_msg {
+        main_col = main_col.push(
+            container(text(err).color(Color::WHITE).size(14))
+                .width(Length::Fill)
+                .padding(5)
+                .style(|_| container::Style {
+                    background: Some(Color::from_rgb(0.8, 0.2, 0.2).into()),
+                    ..Default::default()
+                }),
+        );
+    }
 
     let tasks_view = column(
         app.tasks
@@ -369,15 +413,9 @@ fn view_main_content(app: &GuiApp) -> Element<'_, Message> {
     )
     .spacing(2);
 
-    column![
-        header,
-        input_area,
-        scrollable(tasks_view).height(Length::Fill)
-    ]
-    .spacing(20)
-    .padding(20)
-    .max_width(800)
-    .into()
+    main_col = main_col.push(scrollable(tasks_view).height(Length::Fill));
+
+    container(main_col.spacing(20).padding(20).max_width(800)).into()
 }
 
 fn view_input_area(app: &GuiApp) -> Element<'_, Message> {
