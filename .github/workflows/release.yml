@@ -16,17 +16,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-# 1. Install System Dependencies
+      # 1. Install System Dependencies
       - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libfontconfig1-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
 
-      # Run Tests ---
+      # Run Tests
       - name: Run Unit Tests
         run: cargo test --verbose
-      # ----------------------
 
       # 2. Install Packaging Tools
       - name: Install cargo-deb
@@ -37,12 +38,10 @@ jobs:
         run: cargo build --release --features gui
 
       # 4. Build Debian Package (.deb)
-      # This uses the [package.metadata.deb] section in your Cargo.toml
       - name: Build Deb
         run: cargo deb --no-build --features gui 
-        # --no-build uses the binaries we just built in step 3 to save time
 
-      # 5. Package Generic Linux Tarball (for non-Debian distros)
+      # 5. Package Generic Linux Tarball
       - name: Create Archive
         run: |
           STAGING="cfait-${{ github.ref_name }}"
@@ -60,44 +59,51 @@ jobs:
           # Compress
           tar -czvf "cfait-linux-${{ github.ref_name }}.tar.gz" "$STAGING"
 
+      - name: Generate Changelog
+        uses: orhun/git-cliff-action@v3
+        with:
+          config: cliff.toml
+          args: --verbose --latest --strip header
+          output: CHANGELOG_RELEASE.md
+
       # 6. Publish to GitHub Releases
       - name: Upload Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
+          body_path: CHANGELOG_RELEASE.md
           files: |
             cfait-linux-${{ github.ref_name }}.tar.gz
             target/debian/*.deb
 
   build-windows:
-      runs-on: windows-latest
-      steps:
-        - uses: actions/checkout@v3
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
 
-        - name: Build Release
-          run: cargo build --release --features gui
+      - name: Build Release
+        run: cargo build --release --features gui
 
-        - name: Create Archive
-          run: |
-            # Create a directory to stage files
-            New-Item -ItemType Directory -Force -Path "staging"
-            
-            # Copy Binaries
-            Copy-Item "target\release\cfait.exe" -Destination "staging\"
-            Copy-Item "target\release\gui.exe" -Destination "staging\cfait-gui.exe"
-            
-            # Copy Docs
-            Copy-Item "README.md" -Destination "staging\"
-            Copy-Item "LICENSE" -Destination "staging\"
-            
-            # Create Zip
-            Compress-Archive -Path "staging\*" -DestinationPath "cfait-windows-${{ github.ref_name }}.zip"
+      - name: Create Archive
+        run: |
+          New-Item -ItemType Directory -Force -Path "staging"
+          
+          # Copy Binaries
+          Copy-Item "target\release\cfait.exe" -Destination "staging\"
+          Copy-Item "target\release\gui.exe" -Destination "staging\cfait-gui.exe"
+          
+          # Copy Docs
+          Copy-Item "README.md" -Destination "staging\"
+          Copy-Item "LICENSE" -Destination "staging\"
+          
+          # Create Zip
+          Compress-Archive -Path "staging\*" -DestinationPath "cfait-windows-${{ github.ref_name }}.zip"
 
-        - name: Upload Release
-          uses: softprops/action-gh-release@v1
-          if: startsWith(github.ref, 'refs/tags/')
-          with:
-            files: cfait-windows-${{ github.ref_name }}.zip
+      - name: Upload Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: cfait-windows-${{ github.ref_name }}.zip
 
   package-arch:
     needs: build-linux
@@ -108,8 +114,8 @@ jobs:
       - name: Generate Production PKGBUILD
         run: |
           VERSION=${{ github.ref_name }}
-          # Note: Assuming your gitlab tags match github tags
           SOURCE_URL="https://github.com/${{ github.repository }}/archive/${{ github.ref_name }}.tar.gz"
+          
           wget -O source.tar.gz "$SOURCE_URL"
           
           HASH=$(sha256sum source.tar.gz | awk '{print $1}')
