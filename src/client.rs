@@ -489,6 +489,7 @@ impl RustyClient {
         }
         Ok(success_count)
     }
+
     pub async fn sync_journal(&self) -> Result<(), String> {
         let mut journal = Journal::load();
         if journal.is_empty() {
@@ -541,17 +542,17 @@ impl RustyClient {
                                 if err_s.contains("412") || err_s.contains("PreconditionFailed") {
                                     println!("412 Conflict on Update. Fetching fresh ETag...");
                                     
-                                    if let Ok(fresh_vec) = client.get_calendar_resources(&task.calendar_href, &[task.href.clone()]).await 
+                                    // CLIPPY FIX: Use std::slice::from_ref instead of cloning into a slice
+                                    if let Ok(fresh_vec) = client.get_calendar_resources(&task.calendar_href, std::slice::from_ref(&task.href)).await 
                                        && let Some(fresh_item) = fresh_vec.first() 
                                     {
-                                        // CORRECTED: Check inside the content Result
                                         if let Ok(content) = &fresh_item.content {
                                             println!("Fresh ETag found: {}. Retrying...", content.etag);
                                             
                                             // 2. Update local ETag
                                             task.etag = content.etag.clone();
                                             
-                                            // 3. Retry immediately with Last-Write-Wins (our bytes, new ETag)
+                                            // 3. Retry immediately with Last-Write-Wins
                                             let _ = client.update_resource(
                                                 &task.href,
                                                 bytes, 
@@ -561,11 +562,9 @@ impl RustyClient {
                                             
                                             should_pop = true;
                                         } else {
-                                            // Resource likely deleted on server (content is Err)
                                             should_pop = true;
                                         }
                                     } else {
-                                        // Could not fetch (404?), so it's gone.
                                         should_pop = true;
                                     }
                                 } else if err_s.contains("404") {
@@ -584,10 +583,10 @@ impl RustyClient {
                                 if err_s.contains("404") {
                                     should_pop = true;
                                 } else if err_s.contains("412") || err_s.contains("PreconditionFailed") {
-                                     if let Ok(fresh_vec) = client.get_calendar_resources(&task.calendar_href, &[task.href.clone()]).await 
+                                     // CLIPPY FIX: Use std::slice::from_ref
+                                     if let Ok(fresh_vec) = client.get_calendar_resources(&task.calendar_href, std::slice::from_ref(&task.href)).await 
                                        && let Some(fresh_item) = fresh_vec.first() 
                                     {
-                                        // CORRECTED: Check inside the content Result
                                         if let Ok(content) = &fresh_item.content {
                                             // Retry Delete with new ETag
                                             let _ = client.delete(&task.href, &content.etag).await;
