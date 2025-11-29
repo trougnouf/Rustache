@@ -392,10 +392,19 @@ fn view_main_content(app: &GuiApp) -> Element<'_, Message> {
     let mut main_col = column![header, input_area];
 
     // --- ERROR / OFFLINE BANNER ---
-    // FIXED: Padding moved to container() chain, removed from Style struct
     if let Some(err) = &app.error_msg {
+        // Create a row with the text and a close button
+        let error_content = row![
+            text(err).color(Color::WHITE).size(14).width(Length::Fill),
+            button(icon::icon(icon::CROSS).size(14).color(Color::WHITE))
+                .style(button::text) // Transparent button style
+                .padding(2)
+                .on_press(Message::DismissError)
+        ]
+        .align_y(iced::Alignment::Center);
+
         main_col = main_col.push(
-            container(text(err).color(Color::WHITE).size(14))
+            container(error_content)
                 .width(Length::Fill)
                 .padding(5)
                 .style(|_| container::Style {

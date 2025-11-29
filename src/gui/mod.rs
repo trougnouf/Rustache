@@ -1,7 +1,7 @@
+pub mod icon;
 pub mod message;
 pub mod state;
-pub mod view;
-pub mod icon; // Register the new module
+pub mod view; // Register the new module
 
 use crate::cache::Cache;
 use crate::client::RustyClient;
@@ -14,7 +14,7 @@ use crate::storage::{LOCAL_CALENDAR_HREF, LOCAL_CALENDAR_NAME};
 use crate::journal::Journal;
 
 use chrono::{Duration, Utc};
-use iced::{Element, Task, Theme, window, font}; // Added font
+use iced::{Element, Task, Theme, font, window}; // Added font
 use message::Message;
 use state::{AppState, GuiApp, SidebarMode};
 use std::sync::OnceLock;
@@ -57,7 +57,7 @@ impl GuiApp {
                     Message::ConfigLoaded,
                 ),
                 // Load Font Bytes
-                font::load(icon::FONT_BYTES).map(|_| Message::FontLoaded(Ok(())))
+                font::load(icon::FONT_BYTES).map(|_| Message::FontLoaded(Ok(()))),
             ]),
         )
     }
@@ -229,6 +229,11 @@ impl GuiApp {
                 Task::none()
             }
 
+            Message::DismissError => {
+                self.error_msg = None;
+                Task::none()
+            }
+
             Message::ObSubmitOffline => {
                 // Clear credentials in memory
                 self.ob_url.clear();
@@ -262,7 +267,9 @@ impl GuiApp {
                 self.error_msg = None;
 
                 // Check if initialized (avoid unused variable warning)
-                if self.client.is_some() && let Ok(cfg) = Config::load() {
+                if self.client.is_some()
+                    && let Ok(cfg) = Config::load()
+                {
                     return Task::perform(connect_and_fetch_wrapper(cfg), Message::Loaded);
                 }
                 Task::none()
@@ -321,7 +328,10 @@ impl GuiApp {
                 }
 
                 // If we have fresh tasks from network (and no error forcing offline), update store
-                if self.error_msg.is_none() && let Some(href) = &active && href != LOCAL_CALENDAR_HREF {
+                if self.error_msg.is_none()
+                    && let Some(href) = &active
+                    && href != LOCAL_CALENDAR_HREF
+                {
                     self.store.insert(href.clone(), tasks);
                 }
 
@@ -387,6 +397,8 @@ impl GuiApp {
                 Task::none()
             }
             Message::TasksRefreshed(Ok((href, tasks))) => {
+                // If a sync succeeds, clear any lingering connection errors
+                self.error_msg = None;
                 // Always update store (background sync is valid)
                 self.store.insert(href.clone(), tasks.clone());
                 // Cache it
@@ -948,7 +960,9 @@ impl GuiApp {
                 // Save immediately so it persists
                 self.save_config();
                 // Refresh main view if we just hid the active calendar
-                if let Some(active) = &self.active_cal_href && self.hidden_calendars.contains(active) {
+                if let Some(active) = &self.active_cal_href
+                    && self.hidden_calendars.contains(active)
+                {
                     self.active_cal_href = None;
                 }
                 self.refresh_filtered_tasks();

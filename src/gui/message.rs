@@ -83,6 +83,6 @@ pub enum Message {
 
     // Result
     MigrationComplete(Result<usize, String>),
-        // Add this variant
-        FontLoaded(Result<(), String>),
+    FontLoaded(Result<(), String>),
+    DismissError,
 }
