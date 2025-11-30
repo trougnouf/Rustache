@@ -5,12 +5,14 @@ use crate::model::{CalendarListEntry, Task, TaskStatus};
 use crate::storage::{LOCAL_CALENDAR_HREF, LocalStorage};
 use libdav::CalDavClient;
 use libdav::dav::WebDavClient;
+
 use futures::stream::{self, StreamExt};
 use http::Uri;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use rustls_native_certs;
+use std::collections::{HashMap};
 use std::sync::Arc;
 use tower_http::auth::AddAuthorization;
 
@@ -23,14 +25,13 @@ type HttpsClient = AddAuthorization<
 
 #[derive(Clone, Debug)]
 pub struct RustyClient {
-    // Wrapped in Option to support Offline-only mode
     client: Option<CalDavClient<HttpsClient>>,
 }
 
 impl RustyClient {
     pub fn new(url: &str, user: &str, pass: &str, insecure: bool) -> Result<Self, String> {
         if url.is_empty() {
-            return Ok(Self { client: None }); // Offline Mode
+            return Ok(Self { client: None });
         }
 
         let uri: Uri = url
@@ -190,9 +191,6 @@ impl RustyClient {
     pub async fn get_calendars(&self) -> Result<Vec<CalendarListEntry>, String> {
         // If we have a network client, fetch from network
         if let Some(client) = &self.client {
-            // ... (Copy your existing get_calendars logic here) ...
-            // For brevity in this snippet, assumes implementation exists.
-            // Be sure to replace `self.client` with `client` inside the block.
             let principal = client
                 .find_current_user_principal()
                 .await
@@ -229,8 +227,9 @@ impl RustyClient {
         }
     }
 
+    // --- REWRITTEN: get_tasks (Delta Sync) ---
     pub async fn get_tasks(&self, calendar_href: &str) -> Result<Vec<Task>, String> {
-        // >>> ROUTING <<<
+        // 1. Routing
         if calendar_href == LOCAL_CALENDAR_HREF {
             return LocalStorage::load().map_err(|e| e.to_string());
         }
@@ -240,45 +239,119 @@ impl RustyClient {
             // so we don't overwrite our own offline edits with old server data.
             // We ignore errors here (if sync fails, we still want to try to read).
             let _ = self.sync_journal().await;
-            // ... (Copy existing get_tasks logic) ...
+
+            // 3. PROPFIND to get list of files and ETags (Lightweight)
             let resources = client
                 .list_resources(calendar_href)
                 .await
-                .map_err(|e| format!("{:?}", e))?;
-            let hrefs: Vec<String> = resources
-                .iter()
-                .map(|r| r.href.clone())
-                .filter(|h| h.ends_with(".ics"))
-                .collect();
-            if hrefs.is_empty() {
-                return Ok(vec![]);
+                .map_err(|e| format!("PROPFIND Error: {:?}", e))?;
+
+            // 4. Load Cache
+            let cached_tasks = Cache::load(calendar_href).unwrap_or_default();
+            let mut cache_map: HashMap<String, Task> = HashMap::new();
+            for t in cached_tasks {
+                cache_map.insert(t.href.clone(), t);
             }
-            let fetched = client
-                .get_calendar_resources(calendar_href, &hrefs)
-                .await
-                .map_err(|e| format!("{:?}", e))?;
-            let mut tasks = Vec::new();
-            for item in fetched {
-                if let Ok(content) = item.content
-                    && !content.data.is_empty()
-                    && let Ok(task) = Task::from_ics(
-                        &content.data,
-                        content.etag,
-                        item.href,
-                        calendar_href.to_string(),
-                    )
-                {
-                    tasks.push(task);
+
+            // 5. Calculate Delta
+            let mut final_tasks = Vec::new();
+            let mut to_fetch = Vec::new();
+
+            // Iterate over server resources
+            for resource in resources {
+                // Filter for actual calendar files
+                if !resource.href.ends_with(".ics") {
+                    continue;
+                }
+
+                let href = resource.href;
+                let remote_etag = resource.etag;
+
+                // Check if we have it in cache
+                if let Some(local_task) = cache_map.remove(&href) {
+                    // We have it. Does ETag match?
+                    if let Some(r_etag) = &remote_etag
+                        && !r_etag.is_empty()
+                        && *r_etag == local_task.etag
+                    {
+                        // MATCH: Keep local, skip download
+                        final_tasks.push(local_task);
+                    } else {
+                        // MISMATCH: Needs download
+                        to_fetch.push(href);
+                    }
+                } else {
+                    // NEW: Needs download
+                    to_fetch.push(href);
                 }
             }
-            Ok(tasks)
+            // Note: Items left in `cache_map` are those that exist locally 
+            // but NOT on the server (deleted). We simply don't add them to `final_tasks`, 
+            // effectively deleting them from the view.
+
+            // 6. Fetch Changed Items (Calendar Multiget)
+            if !to_fetch.is_empty() {
+                let fetched = client
+                    .get_calendar_resources(calendar_href, &to_fetch)
+                    .await
+                    .map_err(|e| format!("MULTIGET Error: {:?}", e))?;
+
+                for item in fetched {
+                    if let Ok(content) = item.content
+                        && !content.data.is_empty()
+                        && let Ok(task) = Task::from_ics(
+                            &content.data,
+                            content.etag,
+                            item.href,
+                            calendar_href.to_string(),
+                        )
+                    {
+                        final_tasks.push(task);
+                    }
+                }
+            }
+
+            Ok(final_tasks)
         } else {
             Err("Offline: Cannot fetch remote calendar".to_string())
         }
     }
 
-    // --- WRITE OPERATIONS (ROUTED) ---
+    // --- REWRITTEN: get_all_tasks (Bounded Concurrency) ---
+    pub async fn get_all_tasks(
+        &self,
+        calendars: &[CalendarListEntry],
+    ) -> Result<Vec<(String, Vec<Task>)>, String> {
+        // 1. Clone hrefs to detach lifetimes for async move
+        let hrefs: Vec<String> = calendars.iter().map(|c| c.href.clone()).collect();
 
+        // 2. Create a stream of futures
+        let futures = hrefs.into_iter().map(|href| {
+            let client = self.clone();
+            async move {
+                let tasks = client.get_tasks(&href).await;
+                (href, tasks)
+            }
+        });
+
+        // 3. Buffer Unordered (Max 4 concurrent connections)
+        // This prevents "Thundering Herd" on startup
+        let mut stream = stream::iter(futures).buffer_unordered(4);
+
+        // 4. Collect Results
+        let mut final_results = Vec::new();
+        while let Some((href, res)) = stream.next().await {
+            if let Ok(tasks) = res {
+                final_results.push((href, tasks));
+            } else if let Err(e) = res {
+                 eprintln!("Failed to sync calendar {}: {}", href, e);
+                 // We don't fail the whole batch, just log it
+            }
+        }
+
+        Ok(final_results)
+    }
+    
     pub async fn create_task(&self, task: &mut Task) -> Result<(), String> {
         if task.calendar_href == LOCAL_CALENDAR_HREF {
             let mut all = LocalStorage::load().unwrap_or_default();
@@ -406,7 +479,6 @@ impl RustyClient {
         };
 
         if task.calendar_href == LOCAL_CALENDAR_HREF {
-            // ... (existing local logic) ...
             let mut all = LocalStorage::load().unwrap_or_default();
             if let Some(idx) = all.iter().position(|t| t.uid == task.uid) {
                 all[idx] = task.clone();
@@ -418,7 +490,6 @@ impl RustyClient {
             return Ok((task.clone(), next_task));
         }
 
-        // Network Transaction (Resilient via create/update_task)
         let mut created_task = None;
         if let Some(mut next) = next_task {
             self.create_task(&mut next).await?;
@@ -428,46 +499,7 @@ impl RustyClient {
         Ok((task.clone(), created_task))
     }
 
-    pub async fn get_all_tasks(
-        &self,
-        calendars: &[CalendarListEntry],
-    ) -> Result<Vec<(String, Vec<Task>)>, String> {
-        // 1. Collect OWNED hrefs first. 
-        // This breaks the link to the 'calendars' reference lifetime,
-        // satisfying the compiler's 'static requirement for tokio::spawn.
-        let hrefs: Vec<String> = calendars.iter().map(|c| c.href.clone()).collect();
-
-        // 2. Create a stream of futures
-        let tasks_stream = stream::iter(hrefs).map(|href| {
-            let client = self.clone();
-            async move {
-                let tasks = client.get_tasks(&href).await;
-                (href, tasks)
-            }
-        });
-
-        // 3. Execute concurrently with a limit (buffer_unordered)
-        // This prevents opening 15+ SSL connections instantly (Thundering Herd).
-        // '4' is a safe default for most CalDAV servers.
-        let mut stream = tasks_stream.buffer_unordered(4);
-
-        // 4. Collect results
-        let mut final_results = Vec::new();
-        while let Some((href, result)) = stream.next().await {
-            // We treat individual failures as empty lists for now to keep the app running,
-            // or you could collect errors. Currently we just filter success.
-            if let Ok(tasks) = result {
-                final_results.push((href, tasks));
-            } else if let Err(e) = result {
-                eprintln!("Failed to fetch calendar {}: {}", href, e);
-            }
-        }
-
-        Ok(final_results)
-    }
-
     pub async fn move_task(&self, task: &Task, new_calendar_href: &str) -> Result<Task, String> {
-        // Reuse create_task and delete_task which are now routed!
         let mut new_task = task.clone();
         new_task.calendar_href = new_calendar_href.to_string();
         new_task.href = String::new();
@@ -481,8 +513,6 @@ impl RustyClient {
         Ok(new_task)
     }
 
-    // In src/client.rs inside impl RustyClient
-
     pub async fn migrate_tasks(
         &self,
         tasks: Vec<Task>,
@@ -490,7 +520,6 @@ impl RustyClient {
     ) -> Result<usize, String> {
         let mut success_count = 0;
         for task in tasks {
-            // Reuses the robust move_task (Create -> Delete) logic
             if self.move_task(&task, target_calendar_href).await.is_ok() {
                 success_count += 1;
             }
@@ -505,11 +534,8 @@ impl RustyClient {
         }
 
         if let Some(client) = &self.client {
-            // Process queue
             while !journal.is_empty() {
-                // Get a mutable reference to the first action
                 let action = &mut journal.queue[0];
-                
                 let mut should_pop = false;
                 let mut fatal_error = None;
 
@@ -549,32 +575,21 @@ impl RustyClient {
                                 let err_s = format!("{:?}", e);
                                 if err_s.contains("412") || err_s.contains("PreconditionFailed") {
                                     println!("412 Conflict on Update. Fetching fresh ETag...");
-                                    
-                                    // CLIPPY FIX: Use std::slice::from_ref instead of cloning into a slice
                                     if let Ok(fresh_vec) = client.get_calendar_resources(&task.calendar_href, std::slice::from_ref(&task.href)).await 
                                        && let Some(fresh_item) = fresh_vec.first() 
                                     {
                                         if let Ok(content) = &fresh_item.content {
                                             println!("Fresh ETag found: {}. Retrying...", content.etag);
-                                            
-                                            // 2. Update local ETag
                                             task.etag = content.etag.clone();
-                                            
-                                            // 3. Retry immediately with Last-Write-Wins
                                             let _ = client.update_resource(
                                                 &task.href,
                                                 bytes, 
                                                 &task.etag, 
                                                 b"text/calendar; charset=utf-8; component=VTODO"
                                             ).await;
-                                            
                                             should_pop = true;
-                                        } else {
-                                            should_pop = true;
-                                        }
-                                    } else {
-                                        should_pop = true;
-                                    }
+                                        } else { should_pop = true; }
+                                    } else { should_pop = true; }
                                 } else if err_s.contains("404") {
                                     should_pop = true;
                                 } else {
@@ -591,7 +606,6 @@ impl RustyClient {
                                 if err_s.contains("404") {
                                     should_pop = true;
                                 } else if err_s.contains("412") || err_s.contains("PreconditionFailed") {
-                                     // CLIPPY FIX: Use std::slice::from_ref
                                      if let Ok(fresh_vec) = client.get_calendar_resources(&task.calendar_href, std::slice::from_ref(&task.href)).await 
                                        && let Some(fresh_item) = fresh_vec.first() 
                                     {
@@ -600,9 +614,7 @@ impl RustyClient {
                                             let _ = client.delete(&task.href, &content.etag).await;
                                         }
                                         should_pop = true;
-                                    } else {
-                                        should_pop = true;
-                                    }
+                                    } else { should_pop = true; }
                                 } else {
                                     fatal_error = Some(err_s);
                                 }
@@ -623,7 +635,6 @@ impl RustyClient {
     }
 }
 
-// ... NoVerifier struct ...
 #[derive(Debug)]
 struct NoVerifier;
 impl rustls::client::danger::ServerCertVerifier for NoVerifier {
