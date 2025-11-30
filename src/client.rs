@@ -5,7 +5,7 @@ use crate::model::{CalendarListEntry, Task, TaskStatus};
 use crate::storage::{LOCAL_CALENDAR_HREF, LocalStorage};
 use libdav::CalDavClient;
 use libdav::dav::WebDavClient;
-
+use futures::stream::{self, StreamExt};
 use http::Uri;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
@@ -432,30 +432,38 @@ impl RustyClient {
         &self,
         calendars: &[CalendarListEntry],
     ) -> Result<Vec<(String, Vec<Task>)>, String> {
-        let mut handles = Vec::new();
-        // We clone self to pass into threads.
-        // Note: 'client' inside is Arc-like? No, CalDavClient is struct.
-        // We might need to ensure RustyClient is cheap to clone.
-        // CalDavClient<HttpsClient> uses Hyper Client which is cheap to clone.
+        // 1. Collect OWNED hrefs first. 
+        // This breaks the link to the 'calendars' reference lifetime,
+        // satisfying the compiler's 'static requirement for tokio::spawn.
+        let hrefs: Vec<String> = calendars.iter().map(|c| c.href.clone()).collect();
 
-        for cal in calendars {
+        // 2. Create a stream of futures
+        let tasks_stream = stream::iter(hrefs).map(|href| {
             let client = self.clone();
-            let href = cal.href.clone();
-            handles.push(tokio::spawn(async move {
+            async move {
                 let tasks = client.get_tasks(&href).await;
                 (href, tasks)
-            }));
-        }
-        // ... (collect results logic) ...
-        let mut results = Vec::new();
-        for handle in handles {
-            if let Ok((href, task_res)) = handle.await
-                && let Ok(tasks) = task_res
-            {
-                results.push((href, tasks));
+            }
+        });
+
+        // 3. Execute concurrently with a limit (buffer_unordered)
+        // This prevents opening 15+ SSL connections instantly (Thundering Herd).
+        // '4' is a safe default for most CalDAV servers.
+        let mut stream = tasks_stream.buffer_unordered(4);
+
+        // 4. Collect results
+        let mut final_results = Vec::new();
+        while let Some((href, result)) = stream.next().await {
+            // We treat individual failures as empty lists for now to keep the app running,
+            // or you could collect errors. Currently we just filter success.
+            if let Ok(tasks) = result {
+                final_results.push((href, tasks));
+            } else if let Err(e) = result {
+                eprintln!("Failed to fetch calendar {}: {}", href, e);
             }
         }
-        Ok(results)
+
+        Ok(final_results)
     }
 
     pub async fn move_task(&self, task: &Task, new_calendar_href: &str) -> Result<Task, String> {
