@@ -336,15 +336,12 @@ impl Task {
             (false, false) => {}
         }
 
-        // Priority Sort (1 is High, 9 is Low, 0 is None/Lowest)
-        // We normalize 0 to 10 for comparison so 1 < 5 < 9 < 0
-        let p1 = if self.priority == 0 {
-            10
-        } else {
-            self.priority
-        };
+        // Priority Sort (1 is High, 9 is Low, 0 is None)
+        // We normalize 0 (None) to 5 (Normal) so that:
+        // !1 (High) < !5/None (Normal) < !9 (Low)
+        let p1 = if self.priority == 0 { 5 } else { self.priority };
         let p2 = if other.priority == 0 {
-            10
+            5
         } else {
             other.priority
         };
