@@ -33,13 +33,13 @@ type HttpsClient = AddAuthorization<
 >;
 
 fn strip_host(href: &str) -> String {
-    if let Ok(uri) = href.parse::<Uri>() {
-        if uri.scheme().is_some() || uri.authority().is_some() {
-            return uri
-                .path_and_query()
-                .map(|pq| pq.as_str().to_string())
-                .unwrap_or_else(|| uri.path().to_string());
-        }
+    if let Ok(uri) = href.parse::<Uri>()
+        && (uri.scheme().is_some() || uri.authority().is_some())
+    {
+        return uri
+            .path_and_query()
+            .map(|pq| pq.as_str().to_string())
+            .unwrap_or_else(|| uri.path().to_string());
     }
     href.to_string()
 }
@@ -323,7 +323,6 @@ impl RustyClient {
         Ok(final_results)
     }
 
-    // Returns Result<Vec<String>, String>
     pub async fn create_task(&self, task: &mut Task) -> Result<Vec<String>, String> {
         if task.calendar_href == LOCAL_CALENDAR_HREF {
             let mut all = LocalStorage::load().unwrap_or_default();
@@ -343,7 +342,6 @@ impl RustyClient {
         self.sync_journal().await
     }
 
-    // Returns Result<Vec<String>, String>
     pub async fn update_task(&self, task: &mut Task) -> Result<Vec<String>, String> {
         if task.calendar_href == LOCAL_CALENDAR_HREF {
             let mut all = LocalStorage::load().unwrap_or_default();
@@ -357,7 +355,6 @@ impl RustyClient {
         self.sync_journal().await
     }
 
-    // Returns Result<Vec<String>, String>
     pub async fn delete_task(&self, task: &Task) -> Result<Vec<String>, String> {
         if task.calendar_href == LOCAL_CALENDAR_HREF {
             let mut all = LocalStorage::load().unwrap_or_default();
@@ -369,7 +366,6 @@ impl RustyClient {
         self.sync_journal().await
     }
 
-    // Returns Result<(Task, Option<Task>, Vec<String>), String>
     pub async fn toggle_task(
         &self,
         task: &mut Task,
@@ -406,7 +402,6 @@ impl RustyClient {
         Ok((task.clone(), next_task, logs))
     }
 
-    // CHANGED: Returns Result<(Task, Vec<String>), String>
     pub async fn move_task(
         &self,
         task: &Task,
