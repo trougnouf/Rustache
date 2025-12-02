@@ -119,26 +119,38 @@ jobs:
           files: cfait-windows-${{ github.ref_name }}.zip
 
   package-arch:
-    needs: build-linux
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
+      needs: build-linux
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v3
 
-      - name: Generate Production PKGBUILD
-        run: |
-          VERSION=${{ github.ref_name }}
-          SOURCE_URL="https://codeberg.org/${{ github.repository }}/archive/${{ github.ref_name }}.tar.gz"
-          
-          wget -O source.tar.gz "$SOURCE_URL"
-          
-          HASH=$(sha256sum source.tar.gz | awk '{print $1}')
-          echo "Calculated Hash: $HASH"
-          
-          sed -i "s/'SKIP'/'$HASH'/" packaging/arch/PKGBUILD
-          cp packaging/arch/PKGBUILD PKGBUILD-release
+        - name: Generate Production PKGBUILD
+          run: |
+            VERSION=${{ github.ref_name }}
+            # Construct the GitHub URL based on the current repository context
+            GITHUB_REPO_URL="https://github.com/${{ github.repository }}"
+            # The URL to the tarball on GitHub
+            SOURCE_URL="$GITHUB_REPO_URL/archive/${{ github.ref_name }}.tar.gz"
+            
+            # 1. Download the tarball FROM GITHUB to get the correct hash
+            # (GitHub and Codeberg tarballs might have slightly different hashes due to compression metadata)
+            wget -O source.tar.gz "$SOURCE_URL"
+            
+            HASH=$(sha256sum source.tar.gz | awk '{print $1}')
+            echo "Calculated Hash: $HASH"
+            
+            # 2. Insert the Hash
+            sed -i "s/'SKIP'/'$HASH'/" packaging/arch/PKGBUILD
+            
+            # 3. REPLACE CODEBERG URL WITH GITHUB URL
+            # This swaps the 'url' variable in the PKGBUILD, which update the 'source' location
+            sed -i "s|https://codeberg.org/trougnouf/cfait|$GITHUB_REPO_URL|g" packaging/arch/PKGBUILD
+            
+            # 4. Save artifact
+            cp packaging/arch/PKGBUILD PKGBUILD-github-release
 
-      - name: Upload PKGBUILD to Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: PKGBUILD-release
+        - name: Upload PKGBUILD to Release
+          uses: softprops/action-gh-release@v1
+          if: startsWith(github.ref, 'refs/tags/')
+          with:
+            files: PKGBUILD-github-release

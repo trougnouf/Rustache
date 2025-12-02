@@ -1,3 +1,4 @@
+
 # Cfait
 > Take control of your TODO list
 
@@ -32,25 +33,38 @@ It features both an efficient **TUI (Terminal UI)** and a modern **GUI (Graphica
 
 ### A. Pre-built Packages
 
-You can find pre-compiled binaries for Linux and Windows on the [**GitHub Releases page**](https://codeberg.org/trougnouf/cfait/releases).
+Binaries are built on different environments to ensure maximum compatibility.
+*   **Codeberg Releases** (Recommended)**:** Built on Arch Linux. Includes native Arch packages, cross-compiled Windows binaries, and Linux binaries.
+*   **GitHub Releases:** Built on Ubuntu 24.04 and Windows.
 
-*   **Arch Linux:** Install from the AUR using your favorite helper (e.g., `yay`, `paru`).
-    ```bash
-    # For the latest stable release
-    yay -S cfait
+If a binary from one source doesn't work for you, try the other.
 
-    # For the latest development version from git
-    yay -S cfait-git
-    ```
+*   **Arch Linux:**
+    *   Option 1 (AUR): Build from source using your favorite helper:
+        ```bash
+        yay -S cfait      # Stable release
+        # or
+        yay -S cfait-git  # Latest git version
+        ```
+    *   Option 2 (Pre-built): Download the native `.pkg.tar.zst` from the [**Codeberg Releases**](https://codeberg.org/trougnouf/cfait/releases) and install it:
+        ```bash
+        sudo pacman -U cfait-*.pkg.tar.zst
+        ```
 
-*   **Debian / Ubuntu:** Download the `.deb` file from the [releases page](https://codeberg.org/trougnouf/cfait/releases) and install it:
-    ```bash
-    sudo dpkg -i /path/to/downloaded/cfait_*.deb
-    ```
+*   **Debian / Ubuntu:**
+    *   Download the `.deb` file from [**Codeberg**](https://codeberg.org/trougnouf/cfait/releases) (Built on Arch) or (if you encounter library errors, e.g. `glibc`) from [**GitHub**](https://github.com/trougnouf/cfait/releases) (Built on Ubuntu 24.04).
+    *   Install:
+        ```bash
+        sudo dpkg -i cfait_*.deb
+        ```
 
-*   **Windows:** Download the `.zip` archive from the [releases page](https://codeberg.org/trougnouf/cfait/releases), extract it, and run `cfait.exe` (TUI) or `cfait-gui.exe` (GUI).
+*   **Windows:**
+    *   Download the `.zip` archive from [**Codeberg**](https://codeberg.org/trougnouf/cfait/releases) (Cross-compiled via MinGW) or [**GitHub**](https://github.com/trougnouf/cfait/releases) (Native build).
+    *   Extract it and run `cfait.exe` (TUI) or `cfait-gui.exe` (GUI).
 
-*   **Other Linux:** Download the generic `cfait-linux-*.tar.gz` archive, extract it, and place the binaries (`cfait`, `cfait-gui`) in your `$PATH` (e.g., `~/.local/bin/` or `/usr/local/bin/`).
+*   **Other Linux:**
+    *   Download the generic `cfait-linux-*.tar.gz` archive from either release page.
+    *   Extract and place the binaries in your `$PATH`.
 
 ### B. From Crates.io (via Cargo)
 
@@ -199,3 +213,20 @@ The search bar (in both GUI and TUI) supports powerful filtering syntax:
 
 ## License
 GPL3
+
+## Mirrors
+
+Commits are pushed to the following repositories. The automated build pipelines differ slightly:
+
+*   **[Codeberg](https://codeberg.org/trougnouf/cfait)**
+    *   **CI:** Runs lint and tests on every commit.
+    *   **Environment:** Builds run on **Arch Linux**.
+    *   **Artifacts:** Native Arch package (`.pkg.tar.zst`), Cross-compiled Windows build (MinGW), Cross-packaged Debian build, PKGBUILD.
+    *   **Deployment:** Automatically pushes updates to the [AUR](https://aur.archlinux.org/packages/cfait).
+
+*   **[GitHub](https://github.com/trougnouf/cfait)**
+    *   **CI:** Runs tests on release.
+    *   **Environment:** Builds run on **Ubuntu 24.04** and **Windows Server**.
+    *   **Artifacts:** Native Debian/Ubuntu package, Native Windows build, PKGBUILD.
+*   **[GitLab](https://gitlab.com/trougnouf/cfait)**
+```

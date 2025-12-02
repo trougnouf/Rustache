@@ -8,10 +8,9 @@ on:
 
 jobs:
   build-and-release:
-    runs-on: self-hosted-rust
-    # Mount the volume for caching Rust crates
+    runs-on: self-hosted-arch
     container:
-      image: ghcr.io/catthehacker/ubuntu:rust-latest
+      image: local/arch-builder
       volumes:
         - cargo-registry:/usr/local/cargo/registry
 
@@ -20,89 +19,99 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Add Windows Target
-        run: rustup target add x86_64-pc-windows-gnu
-
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update
-          # Added cmake and nasm for Windows cross-compilation
-          sudo apt-get install -y libfontconfig1-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev mingw-w64 cmake nasm
-
-      - name: Install Packaging Tools
-        run: cargo install cargo-deb
-
-      # --- BUILD LINUX ---
-      - name: Build Linux (Release)
+      
+      # --- 1. COMPILE BINARIES ---
+      - name: Build Linux Binaries
         run: cargo build --release --features gui
 
-      - name: Create Linux Packages
+      - name: Build Windows Binaries (Cross-compile)
+        run: cargo build --release --target x86_64-pc-windows-gnu --features gui
+
+      # --- 2. CREATE PACKAGES ---
+      
+      # A. Debian Package (using Linux binaries)
+      - name: Create Debian Package
         run: |
-          cargo deb --no-build --features gui 
-          
-          # FIX: Use single brackets [ ] and single = for POSIX sh compatibility
+          cargo deb --no-build --features gui
+          # Save .deb to root so it survives 'rm -rf target'
+          mv target/debian/*.deb .
+
+      # B. Generic Archives (Binary & Source)
+      - name: Create Generic Linux and Windows Archives
+        run: |
           if [ "${{ github.ref_type }}" = "tag" ]; then
-            VERSION="${{ github.ref_name }}"
+            RAW_VERSION="${{ github.ref_name }}"
+            CLEAN_VERSION=$(echo "$RAW_VERSION" | sed 's/^v//')
           else
-            VERSION="debug-${{ github.sha }}"
+            RAW_VERSION="debug-${{ github.sha }}"
+            CLEAN_VERSION="$RAW_VERSION"
           fi
           
-          STAGING="cfait-$VERSION"
-          mkdir -p "$STAGING"
-          cp target/release/cfait "$STAGING/"
-          cp target/release/gui "$STAGING/cfait-gui"
-          cp README.md LICENSE "$STAGING/"
-          cp assets/cfait.desktop "$STAGING/"
-          cp assets/cfait.svg "$STAGING/"
-          tar -czvf "cfait-linux-$VERSION.tar.gz" "$STAGING"
-
-          # FIX: Use single brackets here too
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            SOURCE_URL="${{ github.server_url }}/${{ github.repository }}/archive/${{ github.ref_name }}.tar.gz"
-            curl -L -O "$SOURCE_URL"
-            HASH=$(sha256sum "${{ github.ref_name }}.tar.gz" | awk '{print $1}')
-            sed -i "s/'SKIP'/'$HASH'/" packaging/arch/PKGBUILD
-            cp packaging/arch/PKGBUILD PKGBUILD-release
-          fi
-
-      # --- BUILD WINDOWS ---
-      - name: Build Windows (Cross-compile)
-        run: |
-          cargo build --release --target x86_64-pc-windows-gnu --features gui
-
-      - name: Package Windows
-        run: |
-          # FIX: Use single brackets [ ] and single =
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            VERSION="${{ github.ref_name }}"
-          else
-            VERSION="debug-${{ github.sha }}"
-          fi
-
+          # --- 1. Source Tarball (For AUR) ---
+          # FIX: Use git archive. This guarantees ONLY source code is included.
+          # It ignores the .deb, target/, and any other generated files in the workspace.
+          git archive --format=tar.gz --prefix="cfait-${CLEAN_VERSION}/" -o "cfait-source-${RAW_VERSION}.tar.gz" HEAD
+          
+          # --- 2. Linux Binary Tarball (For users) ---
+          mkdir "cfait-linux-${CLEAN_VERSION}"
+          cp target/release/cfait "cfait-linux-${CLEAN_VERSION}/"
+          cp target/release/gui "cfait-linux-${CLEAN_VERSION}/cfait-gui"
+          cp README.md LICENSE "cfait-linux-${CLEAN_VERSION}/"
+          cp assets/cfait.desktop "cfait-linux-${CLEAN_VERSION}/"
+          cp assets/cfait.svg "cfait-linux-${CLEAN_VERSION}/"
+          tar -czvf "cfait-linux-${RAW_VERSION}.tar.gz" "cfait-linux-${CLEAN_VERSION}"
+          
+          # --- 3. Windows Binary Zip ---
           mkdir -p windows-staging
           cp target/x86_64-pc-windows-gnu/release/cfait.exe windows-staging/
           cp target/x86_64-pc-windows-gnu/release/gui.exe windows-staging/cfait-gui.exe
           cp README.md LICENSE windows-staging/
-          
-          cd windows-staging
-          zip -r "../cfait-windows-$VERSION.zip" .
-          cd ..
+          (cd windows-staging && zip -r "../cfait-windows-$RAW_VERSION.zip" .)
 
-      # --- UPLOAD SECTION ---
-      - name: Install Tea (Gitea CLI)
+      # --- 3. VERIFY ARCH BUILD ---
+      - name: Build Arch Linux Package
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          wget -O tea https://dl.gitea.io/tea/1.25.2/tea-1.25.2-linux-amd64
-          chmod +x tea
-          sudo mv tea /usr/local/bin/
-
+          RAW_VERSION="${{ github.ref_name }}"
+          CLEAN_VER=$(echo "$RAW_VERSION" | sed 's/^v//')
+          
+          # Hash the SOURCE tarball
+          HASH=$(sha256sum "cfait-source-${RAW_VERSION}.tar.gz" | awk '{print $1}')
+          
+          # Update PKGBUILD
+          sed -i "s/pkgver=.*/pkgver=${CLEAN_VER}/" packaging/arch/PKGBUILD
+          sed -i "s/'SKIP'/'$HASH'/" packaging/arch/PKGBUILD
+          
+          # Point PKGBUILD to the Release Asset we will upload
+          NEW_SOURCE_URL="https://codeberg.org/trougnouf/cfait/releases/download/${RAW_VERSION}/cfait-source-${RAW_VERSION}.tar.gz"
+          sed -i "s|source=.*|source=(\"cfait-source-${RAW_VERSION}.tar.gz::${NEW_SOURCE_URL}\")|" packaging/arch/PKGBUILD
+          
+          # Clean build environment for Arch
+          rm -rf target/
+          
+          mkdir -p arch-build
+          cp packaging/arch/PKGBUILD arch-build/
+          # Provide the source tarball locally so makepkg doesn't try to download it
+          cp "cfait-source-${RAW_VERSION}.tar.gz" "arch-build/cfait-source-${RAW_VERSION}.tar.gz"
+          
+          # Permission Fixes
+          chown -R builder:builder arch-build
+          chown -R builder:builder /usr/local/cargo
+          
+          # Build
+          (
+            cd arch-build
+            su builder -c "makepkg --printsrcinfo > .SRCINFO"
+            su builder -c "makepkg -f --noconfirm"
+            cp PKGBUILD ../PKGBUILD-for-aur
+            mv *.pkg.tar.zst ../
+            mv .SRCINFO ../
+          )
+          
+      # --- 4. UPLOAD ---
       - name: Generate Changelog
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          wget https://github.com/orhun/git-cliff/releases/download/v2.10.1/git-cliff-2.10.1-x86_64-unknown-linux-gnu.tar.gz -O git-cliff.tar.gz
-          tar -xzf git-cliff.tar.gz
-          sudo mv git-cliff-2.10.1/git-cliff /usr/local/bin/
           git-cliff --config cliff.toml --verbose --latest --strip header --output CHANGELOG_RELEASE.md
 
       - name: Create Release and Upload
@@ -111,10 +120,56 @@ jobs:
           TEA_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           tea login add --name codeberg --url ${{ github.server_url }} --token ${{ secrets.RELEASE_TOKEN }}
+          tea release delete --repo ${{ github.repository }} --confirm ${{ github.ref_name }} || true
           
-          tea release create --repo ${{ github.repository }} --tag ${{ github.ref_name }} --title ${{ github.ref_name }} --note-file CHANGELOG_RELEASE.md
+          tea release create \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --tag "${{ github.ref_name }}" \
+            --note-file CHANGELOG_RELEASE.md
 
-          tea release upload --repo ${{ github.repository }} --tag ${{ github.ref_name }} --file target/debian/*.deb
-          tea release upload --repo ${{ github.repository }} --tag ${{ github.ref_name }} --file cfait-linux-*.tar.gz
-          tea release upload --repo ${{ github.repository }} --tag ${{ github.ref_name }} --file cfait-windows-*.zip
-          tea release upload --repo ${{ github.repository }} --tag ${{ github.ref_name }} --file PKGBUILD-release
+          # Define Files
+          DEB_FILE=$(find . -maxdepth 1 -name "*.deb")
+          ARCH_PKG_FILE=$(find . -maxdepth 1 -name "*.pkg.tar.zst" ! -name "*-debug-*")
+          LINUX_BINARY=$(find . -maxdepth 1 -name "cfait-linux-*.tar.gz")
+          SOURCE_TAR=$(find . -maxdepth 1 -name "cfait-source-*.tar.gz")
+          WIN_ZIP=$(find . -maxdepth 1 -name "cfait-windows-*.zip")
+
+          echo "Uploading..."
+          tea release assets create --repo ${{ github.repository }} ${{ github.ref_name }} "$DEB_FILE"
+          tea release assets create --repo ${{ github.repository }} ${{ github.ref_name }} "$LINUX_BINARY"
+          tea release assets create --repo ${{ github.repository }} ${{ github.ref_name }} "$SOURCE_TAR"
+          tea release assets create --repo ${{ github.repository }} ${{ github.ref_name }} "$WIN_ZIP"
+          tea release assets create --repo ${{ github.repository }} ${{ github.ref_name }} "$ARCH_PKG_FILE"
+          
+          # Rename PKGBUILD back to standard name for the upload asset
+          cp PKGBUILD-for-aur PKGBUILD
+          tea release assets create --repo ${{ github.repository }} ${{ github.ref_name }} PKGBUILD
+
+      - name: Publish to AUR
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          mkdir -p /root/.ssh
+          echo "$AUR_SSH_KEY" > /root/.ssh/aur_key
+          chmod 600 /root/.ssh/aur_key
+          ssh-keyscan aur.archlinux.org >> /root/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i /root/.ssh/aur_key -o UserKnownHostsFile=/root/.ssh/known_hosts"
+          git config --global user.name "Cfait Bot (Benoit Brummer)"
+          git config --global user.email "trougnouf@gmail.com"
+          git clone ssh://aur@aur.archlinux.org/cfait.git aur-repo
+
+          cp PKGBUILD-for-aur aur-repo/PKGBUILD
+          cp .SRCINFO aur-repo/
+
+          cd aur-repo
+          git add PKGBUILD .SRCINFO
+          
+          if git diff --staged --quiet; then
+            echo "No changes to AUR files."
+          else
+            git commit -m "Update to ${{ github.ref_name }}"
+            git push
+            echo "🚀 Successfully pushed to AUR!"
+          fi
