@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
@@ -15,6 +14,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Setup Rust Toolchain
+        uses: https://codeberg.org/wackbyte/rust-toolchain@trunk
+        with:
+          toolchain: stable
+          # We need this target for the Windows cross-compile step
+          targets: x86_64-pc-windows-gnu 
 
       - name: Cache cargo dependencies
         uses: actions/cache@v4
@@ -27,16 +33,10 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      # --- SETUP ENV ---
       - name: Install System Dependencies (Linux & Windows Cross)
         run: |
           sudo apt-get update
-          # Linux deps (xcb, etc) + MinGW for Windows cross-compilation
           sudo apt-get install -y libfontconfig1-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev mingw-w64
-
-      - name: Add Rust Targets
-        run: |
-          rustup target add x86_64-pc-windows-gnu
 
       - name: Install Packaging Tools
         run: cargo install cargo-deb
@@ -47,11 +47,8 @@ jobs:
 
       - name: Create Linux Packages
         run: |
-          # 1. Debian
           cargo deb --no-build --features gui 
           
-          # 2. Tarball
-          # Determine version name
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             VERSION="${{ github.ref_name }}"
           else
@@ -67,7 +64,6 @@ jobs:
           cp assets/cfait.svg "$STAGING/"
           tar -czvf "cfait-linux-$VERSION.tar.gz" "$STAGING"
 
-          # 3. Arch PKGBUILD (Only runs if tag is present to avoid curl errors on non-existent URLs)
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             SOURCE_URL="${{ github.server_url }}/${{ github.repository }}/archive/${{ github.ref_name }}.tar.gz"
             wget -O source.tar.gz "$SOURCE_URL"
@@ -79,6 +75,7 @@ jobs:
       # --- BUILD WINDOWS (CROSS) ---
       - name: Build Windows (Cross-compile)
         run: |
+          # The target x86_64-pc-windows-gnu was installed by the rust-toolchain action above
           cargo build --release --target x86_64-pc-windows-gnu --features gui
 
       - name: Package Windows
@@ -94,16 +91,16 @@ jobs:
           cp target/x86_64-pc-windows-gnu/release/gui.exe windows-staging/cfait-gui.exe
           cp README.md LICENSE windows-staging/
           
-          # Zip it (requires zip tool, usually present, or use python)
           cd windows-staging
           zip -r "../cfait-windows-$VERSION.zip" .
           cd ..
 
-      # --- UPLOAD (Only if it's a real Tag) ---
+      # --- UPLOAD SECTION ---
       - name: Install Tea (Gitea CLI)
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          wget -O tea https://dl.gitea.io/tea/1.25.2/tea-1.25.2-linux-amd64
+          # Using 0.9.2 to be safe, check https://dl.gitea.io/tea/ for available versions
+          wget -O tea https://dl.gitea.io/tea/0.9.2/tea-0.9.2-linux-amd64
           chmod +x tea
           sudo mv tea /usr/local/bin/
 
@@ -122,10 +119,11 @@ jobs:
         run: |
           tea login add --name codeberg --url ${{ github.server_url }} --token ${{ secrets.RELEASE_TOKEN }}
           
+          # Create release
           tea release create --repo ${{ github.repository }} --tag ${{ github.ref_name }} --title ${{ github.ref_name }} --note-file CHANGELOG_RELEASE.md
 
-          # Upload Artifacts
+          # Upload artifacts
           tea release upload --repo ${{ github.repository }} --tag ${{ github.ref_name }} --file target/debian/*.deb
-          tea release upload --repo ${{ github.repository }} --tag ${{ github.ref_name }} --file "cfait-linux-${{ github.ref_name }}.tar.gz"
-          tea release upload --repo ${{ github.repository }} --tag ${{ github.ref_name }} --file "cfait-windows-${{ github.ref_name }}.zip"
+          tea release upload --repo ${{ github.repository }} --tag ${{ github.ref_name }} --file cfait-linux-*.tar.gz
+          tea release upload --repo ${{ github.repository }} --tag ${{ github.ref_name }} --file cfait-windows-*.zip
           tea release upload --repo ${{ github.repository }} --tag ${{ github.ref_name }} --file PKGBUILD-release

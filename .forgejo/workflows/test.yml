@@ -9,6 +9,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Rust Toolchain
+        uses: https://codeberg.org/wackbyte/rust-toolchain@trunk
+        with:
+          toolchain: stable
+          components: clippy
+
       - name: Cache cargo dependencies
         uses: actions/cache@v4
         with:
