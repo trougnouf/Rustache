@@ -102,6 +102,23 @@ pub fn view_sidebar_categories(app: &GuiApp) -> Element<'_, Message> {
         &app.hidden_calendars,
     );
 
+    // Disable Clear button if nothing is selected
+    let has_selection = !app.selected_categories.is_empty();
+    let clear_btn = if has_selection {
+        button(icon::icon(icon::CLEAR_ALL).size(16))
+            .style(button::text)
+            .padding(5)
+            .on_press(Message::ClearAllTags)
+    } else {
+        // Disabled style: Gray text, no action
+        button(icon::icon(icon::CLEAR_ALL).size(16).style(|_| text::Style {
+            color: Some(Color::from_rgb(0.5, 0.5, 0.5)),
+        }))
+        .style(button::text)
+        .padding(5)
+        // No on_press
+    };
+
     let logic_text = if app.match_all_categories {
         "Match: AND"
     } else {
@@ -113,15 +130,18 @@ pub fn view_sidebar_categories(app: &GuiApp) -> Element<'_, Message> {
         .on_press(Message::CategoryMatchModeChanged(!app.match_all_categories));
 
     let header = row![
-        text("Filter Tags")
-            .size(14)
-            .color(Color::from_rgb(0.7, 0.7, 0.7)),
-        iced::widget::horizontal_space(),
+        clear_btn,
+        iced::widget::horizontal_space(), // Make the label flexible so it doesn't force the row to wrap
+        // text("Filter Tags")
+        //     .size(14)
+        //     .color(Color::from_rgb(0.7, 0.7, 0.7))
+        //     .width(Length::Fill),
         logic_btn
     ]
+    .spacing(5)
     .align_y(iced::Alignment::Center)
     .padding(iced::Padding {
-        right: 15.0,
+        right: 14.0, // Increased to avoid scrollbar collision
         ..Default::default()
     });
 

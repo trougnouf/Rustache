@@ -1,3 +1,4 @@
+// File: ./src/gui/icon.rs
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -53,3 +54,4 @@ pub const EXPORT: char = '\u{f56e}'; // 
 pub const BLOCKED: char = '\u{f479}'; // nf-oct-blocked
 pub const CHILD: char = '\u{f0a89}'; // nf-md-account_child
 pub const CREATE_CHILD: char = '\u{f0014}'; // nf-md-account_plus
+pub const CLEAR_ALL: char = '\u{eabf}'; // nf-cod-clear_all

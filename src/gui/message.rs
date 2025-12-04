@@ -63,6 +63,7 @@ pub enum Message {
     SelectCalendar(String),
     IsolateCalendar(String),
     CategoryToggled(String),
+    ClearAllTags, // <-- NEW
     CategoryMatchModeChanged(bool),
     RefreshedAll(Result<Vec<(String, Vec<TodoTask>)>, String>),
 

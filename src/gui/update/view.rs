@@ -74,6 +74,11 @@ pub fn handle(app: &mut GuiApp, message: Message) -> Task<Message> {
             refresh_filtered_tasks(app);
             Task::none()
         }
+        Message::ClearAllTags => {
+            app.selected_categories.clear();
+            refresh_filtered_tasks(app);
+            Task::none()
+        }
         Message::CategoryMatchModeChanged(val) => {
             app.match_all_categories = val;
             refresh_filtered_tasks(app);
@@ -120,6 +125,19 @@ pub fn handle(app: &mut GuiApp, message: Message) -> Task<Message> {
                 }
             } else {
                 app.disabled_calendars.remove(&href);
+            }
+            save_config(app);
+            refresh_filtered_tasks(app);
+            Task::none()
+        }
+        Message::ToggleCalendarVisibility(href, is_visible) => {
+            if !is_visible && app.active_cal_href.as_ref() == Some(&href) {
+                return Task::none();
+            }
+            if is_visible {
+                app.hidden_calendars.remove(&href);
+            } else {
+                app.hidden_calendars.insert(href);
             }
             save_config(app);
             refresh_filtered_tasks(app);

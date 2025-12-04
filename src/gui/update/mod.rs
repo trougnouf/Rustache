@@ -58,6 +58,7 @@ pub fn update(app: &mut GuiApp, message: Message) -> Task<Message> {
         | Message::IsolateCalendar(_)
         | Message::SidebarModeChanged(_)
         | Message::CategoryToggled(_)
+        | Message::ClearAllTags
         | Message::CategoryMatchModeChanged(_)
         | Message::ToggleHideCompleted(_)
         | Message::ToggleHideFullyCompletedTags(_)
