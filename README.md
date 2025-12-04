@@ -6,10 +6,10 @@
 It features both an efficient **TUI (Terminal UI)** and a modern **GUI (Graphical UI)** for desktop integration.
 
 ![Cfait GUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v0.2.5_screenshot_(GUI).png)
-> The Graphical Interface in v0.2.5
+> The Graphical Interface in v0.2.5 <small>([history](https://commons.wikimedia.org/wiki/Category:Screenshots_of_Cfait_(GUI)))</small>
 
 ![Cfait TUI Screenshot](https://commons.wikimedia.org/wiki/Special:FilePath/Cfait_task_manager_v0.2.5_screenshot_(TUI).png)
-> The Terminal Interface in v0.2.5
+> The Terminal Interface in v0.2.5 <small>([history](https://commons.wikimedia.org/wiki/Category:Screenshots_of_Cfait_(TUI)))</small>
 
 ## Features
 
@@ -185,12 +185,16 @@ cfait = ["dev", "rust"]           # Typing #cfait will add #cfait, #dev and #rus
 ## Input Syntax
 When adding (`a`) or editing (`e`) a task, you can use shortcuts directly in the text:
 
-*   `!1` to `!9`: Sets Priority (1 is High, 9 is Low).
-*   `@tomorrow`, `@today`, `@next week`, `@next month`, `@next year`: Sets Due Date relative to now.
-*   `@2025-12-31`: Sets specific Due Date (YYYY-MM-DD).
-*   `~30m`, `~1h`, `~2d`: Sets **Estimated Duration**.
-*   `@daily`, `@weekly`, `@monthly`, `@yearly`, `@every 4 days`, `@every 2 weeks`, etc: Sets Recurrence.
-*   `#tag` (e.g. `#Gardening`) to set a tag / category.
+*   `!1` to `!9`: Sets **Priority** (1 is High, 9 is Low).
+*   `due:DATE` or `@DATE`: Sets **Due Date**.
+    *   Formats: `2025-12-31`, `today`, `tomorrow`, `1w` (1 week), `2d` (2 days).
+*   `start:DATE` or `^DATE`: Sets **Start Date**.
+    *   Tasks with a future start date are pushed to the bottom of the list ("Scheduled").
+*   `est:DURATION` or `~DURATION`: Sets **Estimated Duration** (e.g., `~30m`, `~1h`).
+    *   Also supports `~30min`.
+*   `rec:RECURRENCE`: Sets **Recurrence** (e.g., `rec:weekly`, `rec:daily`).
+    *   Also supports interval syntax: `rec:every 2 weeks`.
+*   `#tag`: Adds a **Tag** / Category.
     *   **Aliases:** If you have configured aliases (e.g., `groceries = ["home"]`), typing `#groceries` will automatically apply `#groceries` AND `#home`.
 
 ## Advanced Search
@@ -210,6 +214,13 @@ The search bar (in both GUI and TUI) supports powerful filtering syntax:
 *   `is:active`: Show only active (not completed/cancelled) tasks.
 
 **Example:** `~<20m !<4 #gardening` finds quick, high-priority, gardening tasks.
+
+## Sorting
+Tasks are sorted by:
+1.  **Status**: In Process > Needs Action > Completed.
+2.  **Scheduling**: Tasks with a **Start Date** in the future are pushed to the bottom.
+3.  **Due Date**: Overdue and upcoming tasks appear first.
+4.  **Priority**: Higher priority (`!1`) first.
 
 ## License
 GPL3

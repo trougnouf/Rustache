@@ -35,6 +35,7 @@ pub struct Task {
     pub status: TaskStatus,
     pub estimated_duration: Option<u32>,
     pub due: Option<DateTime<Utc>>,
+    pub dtstart: Option<DateTime<Utc>>, // <--- NEW FIELD
     pub priority: u8,
     pub parent_uid: Option<String>,
     pub dependencies: Vec<String>,
@@ -55,6 +56,7 @@ impl Task {
             status: TaskStatus::NeedsAction,
             estimated_duration: None,
             due: None,
+            dtstart: None, // <--- Init
             priority: 0,
             parent_uid: None,
             dependencies: Vec::new(),
@@ -88,7 +90,19 @@ impl Task {
             return s1.cmp(&s2);
         }
 
-        // Helper to check if a task is within the "Timed High Priority" window
+        // 2. Future Start Date Check (Scheduled Tasks)
+        // If a task hasn't started yet (dtstart > now), it should be pushed below available tasks
+        let now = Utc::now();
+        let self_future = self.dtstart.map(|d| d > now).unwrap_or(false);
+        let other_future = other.dtstart.map(|d| d > now).unwrap_or(false);
+
+        match (self_future, other_future) {
+            (true, false) => return Ordering::Greater, // Self is future -> push down
+            (false, true) => return Ordering::Less,    // Other is future -> push self up
+            _ => {} // Both future or both present -> continue sorting
+        }
+
+        // 3. Helper to check if a task is within the "Timed High Priority" window
         let is_in_window = |t: &Task| -> bool {
             match (t.due, cutoff) {
                 (Some(d), Some(limit)) => d <= limit, // It has a date, and it's before the limit
@@ -114,7 +128,7 @@ impl Task {
             (false, false) => {}
         }
 
-        // Priority Sort (1 is High, 9 is Low, 0 is None)
+        // 4. Priority Sort (1 is High, 9 is Low, 0 is None)
         // We normalize 0 (None) to 5 (Normal) so that:
         // !1 (High) < !5/None (Normal) < !9 (Low)
         let p1 = if self.priority == 0 { 5 } else { self.priority };

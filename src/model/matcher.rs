@@ -129,6 +129,73 @@ impl Task {
                 }
             }
 
+            // START DATE FILTER (start:<2025-01-01, ^>today)
+            if part.starts_with("start:") || part.starts_with('^') {
+                let val_str = part
+                    .strip_prefix("start:")
+                    .or_else(|| part.strip_prefix('^'))
+                    .unwrap();
+
+                let (op, date_str) = if let Some(s) = val_str.strip_prefix("<=") {
+                    ("<=", s)
+                } else if let Some(s) = val_str.strip_prefix(">=") {
+                    (">=", s)
+                } else if let Some(s) = val_str.strip_prefix('<') {
+                    ("<", s)
+                } else if let Some(s) = val_str.strip_prefix('>') {
+                    (">", s)
+                } else {
+                    ("=", val_str)
+                };
+
+                let now = Utc::now().date_naive();
+                // Reuse logic from 'parse_smart_date' conceptual equivalents or simple parsing
+                let target_date = if date_str == "today" {
+                    Some(now)
+                } else if date_str == "tomorrow" {
+                    Some(now + chrono::Duration::days(1))
+                } else {
+                    chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
+                };
+
+                if let Some(target) = target_date {
+                    match self.dtstart {
+                        Some(dt) => {
+                            let t_date = dt.naive_utc().date();
+                            match op {
+                                "<" => {
+                                    if t_date >= target {
+                                        return false;
+                                    }
+                                }
+                                ">" => {
+                                    if t_date <= target {
+                                        return false;
+                                    }
+                                }
+                                "<=" => {
+                                    if t_date > target {
+                                        return false;
+                                    }
+                                }
+                                ">=" => {
+                                    if t_date < target {
+                                        return false;
+                                    }
+                                }
+                                _ => {
+                                    if t_date != target {
+                                        return false;
+                                    }
+                                }
+                            }
+                        }
+                        None => return false, // Hide tasks with no start date if filtering by start
+                    }
+                    continue;
+                }
+            }
+
             // 3. Due Date Filter (@<2025-01-01, @>today)
             if part.starts_with('@') {
                 let (op, val_str) = if let Some(stripped) = part.strip_prefix("@<=") {
@@ -240,7 +307,7 @@ impl Task {
                 continue;
             }
 
-            // 4. Standard Text Search
+            // Standard Text Search
             if !self.summary.to_lowercase().contains(part)
                 && !self.description.to_lowercase().contains(part)
             {

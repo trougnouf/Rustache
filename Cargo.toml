@@ -8,8 +8,8 @@ default-run = "cfait" # Default to TUI when running 'cargo run'
 repository = "https://codeberg.org/trougnouf/cfait"
 homepage = "https://codeberg.org/trougnouf/cfait"
 readme = "README.md"
-keywords = ["caldav", "todo", "task", "tui", "gui"]
-categories = ["command-line-utilities"]
+keywords = ["caldav", "todo", "task", "tui", "gui", "productivity"]
+categories = ["command-line-utilities", "gui", "network-programming", "database"]
 exclude = [
     # Git and CI related files
     ".github/*",
