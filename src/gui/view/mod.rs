@@ -1,4 +1,3 @@
-// File: ./src/gui/view/mod.rs
 pub mod help;
 pub mod settings;
 pub mod sidebar;
@@ -13,7 +12,7 @@ use crate::gui::view::sidebar::{view_sidebar_calendars, view_sidebar_categories}
 use crate::gui::view::task_row::view_task_row;
 use crate::storage::LOCAL_CALENDAR_HREF;
 
-use iced::widget::{MouseArea, column, container, row, scrollable, stack, svg, text};
+use iced::widget::{MouseArea, Space, column, container, row, scrollable, stack, svg, text};
 use iced::{Background, Color, Element, Length, Theme, mouse};
 
 pub fn root_view(app: &GuiApp) -> Element<'_, Message> {
@@ -30,7 +29,7 @@ pub fn root_view(app: &GuiApp) -> Element<'_, Message> {
             // Main App Layout
             let content_layout = row![
                 view_sidebar(app),
-                iced::widget::Rule::vertical(1),
+                iced::widget::rule::vertical(1),
                 container(view_main_content(app))
                     .width(Length::Fill)
                     .center_x(Length::Fill)
@@ -239,6 +238,7 @@ fn view_sidebar(app: &GuiApp) -> Element<'_, Message> {
             }
         })
         .into()
+    // Remove the call to horizontal_space if it was appended previously
 }
 
 fn view_main_content(app: &GuiApp) -> Element<'_, Message> {
@@ -490,7 +490,7 @@ fn view_input_area(app: &GuiApp) -> Element<'_, Message> {
             text("Editing")
                 .size(14)
                 .color(Color::from_rgb(0.7, 0.7, 1.0)),
-            iced::widget::horizontal_space(),
+            Space::new().width(Length::Fill),
             cancel_btn,
             save_btn
         ]

@@ -1,12 +1,8 @@
-// File: ./src/gui/view/settings.rs
-// Settings view extracted from view.rs
 use crate::gui::icon;
 use crate::gui::message::Message;
 use crate::gui::state::{AppState, GuiApp};
 
-use iced::widget::{
-    Rule, button, checkbox, column, container, horizontal_space, row, scrollable, text, text_input,
-};
+use iced::widget::{Space, button, checkbox, column, container, row, scrollable, text, text_input};
 use iced::{Color, Element, Length};
 
 pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
@@ -38,34 +34,33 @@ pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
         .spacing(5)
         .into()
     } else {
-        horizontal_space().width(0).into()
+        Space::new().width(0).into()
     };
 
     let prefs: Element<'_, Message> = if is_settings {
         std::convert::Into::<Element<'_, Message>>::into(container(
             column![
                 std::convert::Into::<Element<'_, Message>>::into(
-                    checkbox("Hide Completed Tasks (Everywhere)", app.hide_completed)
+                    checkbox(app.hide_completed)
+                        .label("Hide Completed Tasks (Everywhere)")
                         .on_toggle(Message::ToggleHideCompleted),
                 ),
                 // Conditional checkbox: only visible when 'Hide Completed Tasks (Everywhere)' is off
                 if !app.hide_completed {
                     std::convert::Into::<Element<'_, Message>>::into(
-                        checkbox(
-                            "Hide Tags containing ONLY completed tasks",
-                            app.hide_fully_completed_tags,
-                        )
-                        .on_toggle(Message::ToggleHideFullyCompletedTags),
+                        checkbox(app.hide_fully_completed_tags)
+                            .label("Hide Tags containing ONLY completed tasks")
+                            .on_toggle(Message::ToggleHideFullyCompletedTags),
                     )
                 } else {
                     // Placeholder to keep spacing
-                    std::convert::Into::<Element<'_, Message>>::into(horizontal_space().width(0))
+                    std::convert::Into::<Element<'_, Message>>::into(Space::new().width(0))
                 },
             ]
             .spacing(10),
         ))
     } else {
-        std::convert::Into::<Element<'_, Message>>::into(horizontal_space().width(0))
+        std::convert::Into::<Element<'_, Message>>::into(Space::new().width(0))
     };
 
     let sorting_ui: Element<_> = if is_settings {
@@ -82,7 +77,7 @@ pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
         .spacing(5)
         .into()
     } else {
-        horizontal_space().width(0).into()
+        Space::new().width(0).into()
     };
 
     // Alias Section
@@ -120,20 +115,21 @@ pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
         ]
         .spacing(10);
 
-        let area = container(column![list_col, Rule::horizontal(1), input_row].spacing(15))
-            .padding(10)
-            .style(|_| container::Style {
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 1.0,
-                    color: Color::from_rgb(0.3, 0.3, 0.3),
-                },
-                ..Default::default()
-            });
+        let area =
+            container(column![list_col, iced::widget::rule::horizontal(1), input_row].spacing(15))
+                .padding(10)
+                .style(|_| container::Style {
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        width: 1.0,
+                        color: Color::from_rgb(0.3, 0.3, 0.3),
+                    },
+                    ..Default::default()
+                });
 
         area.into()
     } else {
-        horizontal_space().width(0).into()
+        Space::new().width(0).into()
     };
 
     let cal_mgmt_ui: Element<_> = if is_settings && !app.calendars.is_empty() {
@@ -144,7 +140,8 @@ pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
             let is_enabled = !app.disabled_calendars.contains(&cal.href);
 
             let row_content = row![
-                checkbox(&cal.name, is_enabled)
+                checkbox(is_enabled)
+                    .label(&cal.name)
                     // When toggled, we send !v because the msg is "ToggleDisabled"
                     .on_toggle(move |v| Message::ToggleCalendarDisabled(cal.href.clone(), !v))
                     .width(Length::Fill)
@@ -165,7 +162,7 @@ pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
             })
             .into()
     } else {
-        horizontal_space().width(0).into()
+        Space::new().width(0).into()
     };
 
     // Initialize the buttons row before using it
@@ -201,7 +198,8 @@ pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
         .padding(10)
         .on_press(Message::ObSubmit),
     );
-    let insecure_check = checkbox("Allow Insecure SSL (e.g. self-signed)", app.ob_insecure)
+    let insecure_check = checkbox(app.ob_insecure)
+        .label("Allow Insecure SSL (e.g. self-signed)")
         .on_toggle(Message::ObInsecureToggled)
         .size(16)
         .text_size(14);

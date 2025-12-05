@@ -1,11 +1,10 @@
-// File: ./src/gui/view/task_row.rs
 // Task row rendering logic extracted from view.rs
 use crate::gui::icon;
 use crate::gui::message::Message;
 use crate::gui::state::GuiApp;
 use crate::model::Task as TodoTask;
 
-use iced::widget::{button, column, container, horizontal_space, row, scrollable, text};
+use iced::widget::{Space, button, column, container, row, scrollable, text};
 use iced::{Color, Element, Length};
 
 pub fn view_task_row<'a>(
@@ -29,7 +28,7 @@ pub fn view_task_row<'a>(
     let show_indent = app.active_cal_href.is_some() && app.search_value.is_empty();
     // Further reduce per-depth indent so checkboxes start closer to the left
     let indent_size = if show_indent { task.depth * 12 } else { 0 };
-    let indent = horizontal_space().width(Length::Fixed(indent_size as f32));
+    let indent = Space::new().width(Length::Fixed(indent_size as f32));
 
     // 2. Title Row (Just Summary) - replaced later with direct text in-line to avoid wrapping issues
 
@@ -114,7 +113,7 @@ pub fn view_task_row<'a>(
         .width(Length::Fixed(80.0))
         .into(),
         // If no date is set, don't reserve space so tags/actions can use it
-        None => horizontal_space().width(Length::Fixed(0.0)).into(),
+        None => Space::new().width(Length::Fixed(0.0)).into(),
     };
 
     // 4. Info Button
@@ -144,7 +143,7 @@ pub fn view_task_row<'a>(
         actions = actions.push(info_btn);
     } else {
         // Invisible placeholder to hold layout space (same width as info button)
-        actions = actions.push(horizontal_space().width(Length::Fixed(25.0)));
+        actions = actions.push(Space::new().width(Length::Fixed(25.0)));
     }
 
     if let Some(yanked) = &app.yanked_uid {
@@ -354,7 +353,7 @@ pub fn view_task_row<'a>(
             if has_metadata {
                 build_tags()
             } else {
-                horizontal_space().width(Length::Fixed(0.0)).into()
+                Space::new().width(Length::Fixed(0.0)).into()
             }
         ]
         .spacing(6)
@@ -374,7 +373,7 @@ pub fn view_task_row<'a>(
         title_row,
         // If we didn't place tags inline, show them on a separate right-aligned row
         if !place_inline && has_metadata {
-            row![horizontal_space(), build_tags()]
+            row![Space::new(), build_tags()]
         } else {
             row![]
         }
@@ -390,14 +389,14 @@ pub fn view_task_row<'a>(
 
     // Reduce padding so the row is more compact; nudge right edge 1px left to avoid scrollbar overlap
     let padded_row = container(row_main).padding(iced::Padding {
-        top: 4.0,
-        right: 12.0,
-        bottom: 4.0,
-        left: 0.0,
+        top: 2.0,
+        right: 6.0,
+        bottom: 2.0,
+        left: 6.0,
     });
 
     // GENERATE ID
-    let row_id = iced::widget::container::Id::new(task.uid.clone());
+    let row_id = iced::widget::Id::from(task.uid.clone());
 
     if is_expanded {
         let mut details_col = column![].spacing(5);
@@ -498,7 +497,7 @@ pub fn view_task_row<'a>(
         }
 
         let desc_row = row![
-            horizontal_space().width(Length::Fixed(indent_size as f32 + 30.0)),
+            Space::new().width(Length::Fixed(indent_size as f32 + 30.0)),
             details_col
         ];
         container(column![padded_row, desc_row].spacing(5))

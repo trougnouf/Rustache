@@ -1,4 +1,3 @@
-// File: ./src/gui/update/tasks.rs
 use crate::cache::Cache;
 use crate::gui::async_ops::*;
 use crate::gui::message::Message;
@@ -6,7 +5,8 @@ use crate::gui::state::GuiApp;
 use crate::gui::update::common::refresh_filtered_tasks;
 use crate::model::Task as TodoTask;
 use iced::Task;
-use iced::widget::scrollable;
+use iced::widget::operation;
+use iced::widget::scrollable::RelativeOffset;
 
 pub fn handle(app: &mut GuiApp, message: Message) -> Task<Message> {
     match message {
@@ -97,9 +97,9 @@ pub fn handle(app: &mut GuiApp, message: Message) -> Task<Message> {
                             .unwrap_or(0) as f32;
                         let fraction = idx / len;
 
-                        let scroll_cmd = scrollable::snap_to(
+                        let scroll_cmd = operation::snap_to(
                             app.scrollable_id.clone(),
-                            scrollable::RelativeOffset {
+                            RelativeOffset {
                                 x: 0.0,
                                 y: fraction,
                             },

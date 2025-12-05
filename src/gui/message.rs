@@ -1,4 +1,3 @@
-// File: ./src/gui/message.rs
 use crate::client::RustyClient;
 use crate::config::Config;
 use crate::gui::state::{ResizeDirection, SidebarMode};
@@ -99,10 +98,7 @@ pub enum Message {
     MinimizeWindow,
     CloseWindow,
     WindowResized(iced::Size),
-    WindowMoved(iced::Point), // Added
 
     // Resize
     ResizeStart(ResizeDirection),
-    ResizeUpdate(iced::Point),
-    ResizeEnd,
 }

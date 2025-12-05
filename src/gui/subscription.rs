@@ -1,7 +1,7 @@
-// File: ./src/gui/subscription.rs
+// File: src/gui/subscription.rs
 use crate::gui::message::Message;
 use crate::gui::state::{AppState, GuiApp};
-use iced::{Subscription, event, keyboard, mouse, window};
+use iced::{Subscription, event, keyboard, window};
 
 pub fn subscription(app: &GuiApp) -> Subscription<Message> {
     use iced::keyboard::key;
@@ -9,30 +9,19 @@ pub fn subscription(app: &GuiApp) -> Subscription<Message> {
     let mut subs = Vec::new();
 
     if matches!(app.state, AppState::Onboarding | AppState::Settings) {
-        subs.push(keyboard::on_key_press(|k, modifiers| {
-            if k == key::Key::Named(key::Named::Tab) {
-                Some(Message::TabPressed(modifiers.shift()))
-            } else {
-                None
+        subs.push(keyboard::listen().filter_map(|event| {
+            if let keyboard::Event::KeyPressed { key, modifiers, .. } = event {
+                if key == key::Key::Named(key::Named::Tab) {
+                    return Some(Message::TabPressed(modifiers.shift()));
+                }
             }
+            None
         }));
     }
 
-    // Subscribe to mouse events if resizing
-    if app.resize_direction.is_some() {
-        subs.push(event::listen_with(|evt, _status, _window_id| match evt {
-            iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
-                Some(Message::ResizeUpdate(position))
-            }
-            iced::Event::Mouse(mouse::Event::ButtonReleased(_)) => Some(Message::ResizeEnd),
-            _ => None,
-        }));
-    }
-
-    // Track window metrics (Size and Position)
+    // Track window metrics (Size)
     subs.push(event::listen_with(|evt, _status, _window_id| match evt {
         iced::Event::Window(window::Event::Resized(size)) => Some(Message::WindowResized(size)),
-        iced::Event::Window(window::Event::Moved(point)) => Some(Message::WindowMoved(point)),
         _ => None,
     }));
 

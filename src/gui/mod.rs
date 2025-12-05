@@ -1,4 +1,3 @@
-// File: ./src/gui/mod.rs
 pub mod async_ops;
 pub mod icon;
 pub mod message;
@@ -16,24 +15,21 @@ pub fn run() -> iced::Result {
     // Initialize the Tokio runtime managed in async_ops
     async_ops::init_runtime();
 
-    iced::application(
-        "Cfait | 🗹 Take control of your TODO list",
-        GuiApp::update,
-        GuiApp::view,
-    )
-    .subscription(GuiApp::subscription)
-    .theme(GuiApp::theme)
-    .window(window::Settings {
-        decorations: false, // <--- Disable OS Top Bar
-        platform_specific: window::settings::PlatformSpecific {
-            #[cfg(target_os = "linux")]
-            application_id: String::from("cfait"),
+    iced::application(GuiApp::new, GuiApp::update, GuiApp::view)
+        .title(GuiApp::title)
+        .subscription(GuiApp::subscription)
+        .theme(GuiApp::theme)
+        .window(window::Settings {
+            decorations: false, // <--- Disable OS Top Bar
+            platform_specific: window::settings::PlatformSpecific {
+                #[cfg(target_os = "linux")]
+                application_id: String::from("cfait"),
 
+                ..Default::default()
+            },
             ..Default::default()
-        },
-        ..Default::default()
-    })
-    .run_with(GuiApp::new)
+        })
+        .run()
 }
 
 impl GuiApp {
@@ -54,6 +50,10 @@ impl GuiApp {
 
     fn view(&self) -> Element<'_, Message> {
         view::root_view(self)
+    }
+
+    fn title(&self) -> String {
+        "Cfait | 🗹 Take control of your TODO list".to_string()
     }
 
     fn theme(&self) -> Theme {

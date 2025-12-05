@@ -1,8 +1,8 @@
-// File: ./src/gui/state.rs
+// File: src/gui/state.rs
 use crate::client::RustyClient;
 use crate::model::{CalendarListEntry, Task as TodoTask};
 use crate::store::TaskStore;
-use iced::widget::{scrollable, text_editor};
+use iced::widget::text_editor;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Default, PartialEq, Clone, Copy, Debug)]
@@ -85,12 +85,11 @@ pub struct GuiApp {
     pub ob_default_cal: Option<String>,
     pub ob_sort_months_input: String,
     pub ob_insecure: bool,
-    pub scrollable_id: scrollable::Id,
+    pub scrollable_id: iced::widget::Id,
 
     // Window Resizing State
     pub resize_direction: Option<ResizeDirection>,
     pub current_window_size: iced::Size,
-    pub current_window_pos: iced::Point, // Added to support Left/Top resizing
 }
 
 impl Default for GuiApp {
@@ -138,11 +137,10 @@ impl Default for GuiApp {
             ob_pass: String::new(),
             ob_default_cal: None,
             ob_insecure: false,
-            scrollable_id: scrollable::Id::unique(),
+            scrollable_id: iced::widget::Id::unique(),
 
             resize_direction: None,
             current_window_size: iced::Size::new(800.0, 600.0),
-            current_window_pos: iced::Point::new(0.0, 0.0),
         }
     }
 }

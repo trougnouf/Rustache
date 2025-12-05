@@ -50,7 +50,7 @@ ratatui = { version = "0.29", optional = true }
 crossterm = { version = "0.29", optional = true }
 
 # --- GUI ONLY (Future) ---
-iced = { version = "0.13", features = ["tokio", "svg"], optional = true }
+iced = { git = "https://github.com/iced-rs/iced", rev = "281dda733c1ac1836d88a4b14325f067c77ab0c6", features = ["tokio", "svg", "advanced"], optional = true }
 
 [dev-dependencies]
 mockito = "1.7" # For mocking the HTTP server
@@ -82,8 +82,7 @@ maintainer = "Benoit Brummer (Trougnouf) <trougnouf@gmail.com>"
 copyright = "2025, Benoit Brummer (Trougnouf)"
 license-file = ["LICENSE", "4"]
 extended-description = """
-Cfait is a tasks / TODO CalDAV client featuring both a CLI/TUI and a GUI.
-It supports smart input, recurrence, and offline caching.
+Cfait is a powerful yet simple tasks / TODO CalDAV client featuring both a TUI and a GUI.
 """
 depends = "$auto"
 section = "utils"
@@ -102,4 +101,3 @@ assets = [
 file = "packaging/arch/PKGBUILD"
 search = "pkgver=[0-9\\.]+"
 replace = "pkgver={{version}}"
-

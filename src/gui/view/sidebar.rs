@@ -1,9 +1,10 @@
-// File: ./src/gui/view/sidebar.rs
+// File: src/gui/view/sidebar.rs
+
 use crate::gui::icon;
 use crate::gui::message::Message;
 use crate::gui::state::GuiApp;
 use crate::store::UNCATEGORIZED_ID;
-use iced::widget::{Rule, button, checkbox, column, container, row, text, toggler};
+use iced::widget::{Space, button, checkbox, column, container, row, text, toggler};
 use iced::{Color, Element, Length};
 
 pub fn view_sidebar_calendars(app: &GuiApp) -> Element<'_, Message> {
@@ -31,7 +32,7 @@ pub fn view_sidebar_calendars(app: &GuiApp) -> Element<'_, Message> {
                 let is_visible = !app.hidden_calendars.contains(&cal.href);
                 let is_target = app.active_cal_href.as_ref() == Some(&cal.href);
 
-                let check = checkbox("", is_visible)
+                let check = checkbox(is_visible)
                     .on_toggle(move |v| Message::ToggleCalendarVisibility(cal.href.clone(), v));
 
                 let mut label = button(text(&cal.name).size(16))
@@ -124,7 +125,7 @@ pub fn view_sidebar_categories(app: &GuiApp) -> Element<'_, Message> {
         .padding(5)
         .on_press(Message::CategoryMatchModeChanged(!app.match_all_categories));
 
-    let header = row![clear_btn, iced::widget::horizontal_space(), logic_btn]
+    let header = row![clear_btn, Space::new(), logic_btn]
         .spacing(5)
         .align_y(iced::Alignment::Center)
         .padding(iced::Padding {
@@ -154,7 +155,8 @@ pub fn view_sidebar_categories(app: &GuiApp) -> Element<'_, Message> {
                         format!("#{} ({})", cat, count)
                     };
 
-                    checkbox(display_name, is_selected)
+                    checkbox(is_selected)
+                        .label(display_name)
                         .size(18)
                         .text_size(16)
                         .on_toggle(move |_| Message::CategoryToggled(cat_clone.clone()))
@@ -195,7 +197,7 @@ pub fn view_sidebar_categories(app: &GuiApp) -> Element<'_, Message> {
         .unwrap_or_else(|| opts[0].clone());
 
     let dur_filters = column![
-        Rule::horizontal(1),
+        iced::widget::rule::horizontal(1),
         text("Filter Duration")
             .size(14)
             .color(Color::from_rgb(0.7, 0.7, 0.7)),
@@ -219,7 +221,8 @@ pub fn view_sidebar_categories(app: &GuiApp) -> Element<'_, Message> {
         ]
         .spacing(5)
         .align_y(iced::Alignment::Center),
-        checkbox("Include Unset", app.filter_include_unset_duration)
+        checkbox(app.filter_include_unset_duration)
+            .label("Include Unset")
             .text_size(12)
             .size(16)
             .on_toggle(Message::ToggleIncludeUnsetDuration)

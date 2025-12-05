@@ -1,6 +1,5 @@
-// File: ./src/gui/view/help.rs
 use crate::gui::message::Message;
-use iced::widget::{button, column, container, row, scrollable, text, Rule};
+use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Color, Element, Length, Theme};
 
 // --- STYLE CONSTANTS ---
@@ -121,11 +120,11 @@ fn help_card(title: &'static str, icon_char: char, items: Vec<HelpEntry>) -> Ele
     .spacing(10)
     .align_y(iced::Alignment::Center);
 
-    let mut rows = column![header, Rule::horizontal(1).style(|_: &Theme| iced::widget::rule::Style { 
+    let mut rows = column![header, iced::widget::rule::horizontal(1).style(|_: &Theme| iced::widget::rule::Style { 
         color: Color::from_rgb(0.3, 0.3, 0.3),
-        width: 1,
         radius: 0.0.into(),
         fill_mode: iced::widget::rule::FillMode::Full,
+        snap: true,
     })].spacing(12);
 
     for item in items {
@@ -153,13 +152,13 @@ fn help_card(title: &'static str, icon_char: char, items: Vec<HelpEntry>) -> Ele
             // FIXED: Explicitly construct Element for both branches to ensure type matching
             if !item.example.is_empty() {
                 Element::new(row![
-                    iced::widget::horizontal_space().width(Length::Fixed(110.0)),
+                    Space::new().width(Length::Fixed(110.0)),
                     text::<Theme, iced::Renderer>(format!("e.g.: {}", item.example))
                         .size(12)
                         .style(|_: &Theme| text::Style { color: Some(COL_MUTED) })
                 ])
             } else {
-                Element::new(iced::widget::horizontal_space().height(0))
+                Element::new(Space::new().height(0))
             }
         ].spacing(2);
 
