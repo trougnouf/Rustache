@@ -50,7 +50,7 @@ ratatui = { version = "0.29", optional = true }
 crossterm = { version = "0.29", optional = true }
 
 # --- GUI ONLY (Future) ---
-iced = { git = "https://github.com/iced-rs/iced", rev = "281dda733c1ac1836d88a4b14325f067c77ab0c6", features = ["tokio", "svg", "advanced"], optional = true }
+iced = { git = "https://github.com/iced-rs/iced", rev = "92d08bcc10ceab52362d5f3797172e325f7d409c", features = ["tokio", "svg", "advanced"], optional = true }
 
 [dev-dependencies]
 mockito = "1.7" # For mocking the HTTP server

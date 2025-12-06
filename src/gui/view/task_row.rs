@@ -1,4 +1,4 @@
-// Task row rendering logic extracted from view.rs
+// File: ./src/gui/view/task_row.rs
 use crate::gui::icon;
 use crate::gui::message::Message;
 use crate::gui::state::GuiApp;
@@ -222,7 +222,17 @@ pub fn view_task_row<'a>(
             .on_press(Message::EditTaskStart(index)),
     );
 
-    // Cancel Button (Moved here)
+    // --- REORDERED HERE: Delete first, then Cancel ---
+
+    // 1. Delete Button (Dangerously close prevention: Put it "inside")
+    actions = actions.push(
+        button(icon::icon(icon::TRASH).size(14))
+            .style(button::danger)
+            .padding(4)
+            .on_press(Message::DeleteTask(index)),
+    );
+
+    // 2. Cancel Button (Safer on the edge)
     if task.status != crate::model::TaskStatus::Completed
         && task.status != crate::model::TaskStatus::Cancelled
     {
@@ -236,13 +246,6 @@ pub fn view_task_row<'a>(
                 )),
         );
     }
-
-    actions = actions.push(
-        button(icon::icon(icon::TRASH).size(14))
-            .style(button::danger)
-            .padding(4)
-            .on_press(Message::DeleteTask(index)),
-    );
 
     // 6. Construct Main Row
 
@@ -387,10 +390,10 @@ pub fn view_task_row<'a>(
         .spacing(10)
         .align_y(iced::Alignment::Center);
 
-    // Reduce padding so the row is more compact; nudge right edge 1px left to avoid scrollbar overlap
+    // --- CHANGED HERE: Increased right padding from 6.0 to 16.0 ---
     let padded_row = container(row_main).padding(iced::Padding {
         top: 2.0,
-        right: 6.0,
+        right: 16.0,
         bottom: 2.0,
         left: 6.0,
     });
