@@ -72,7 +72,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(
-                " Enter:Select/Toggle  Space:Toggle Visibility  *:Show All  Right:Focus(Solo)",
+                " Enter:Select/Toggle  Space:Toggle Visibility  *:Show/Clear All  Right:Focus(Solo)",
             ),
         ]),
     ];
@@ -122,10 +122,11 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                     let prefix = if is_target { ">" } else { " " };
                     let check = if is_visible { "[x]" } else { "[ ]" };
 
+                    // Use Reset instead of White to adapt to terminal theme
                     let color = if is_target {
                         Color::Yellow
                     } else {
-                        Color::White
+                        Color::Reset
                     };
 
                     let style = if is_target {
@@ -203,14 +204,14 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
             let is_blocked = state.store.is_blocked(t);
 
             // Left Side Style (Checkbox, Title, Metadata)
-            // Blocked items are DarkGray, but Highlight style will override FG to White when selected
+            // Blocked items are DarkGray, but Highlight style will override FG to Reset when selected
             let base_style = if is_blocked {
                 Style::default().fg(Color::DarkGray)
             } else {
                 match t.priority {
                     1..=4 => Style::default().fg(Color::Red),
                     5 => Style::default().fg(Color::Yellow),
-                    _ => Style::default().fg(Color::White),
+                    _ => Style::default(), // Uses Reset by default
                 }
             };
 
@@ -330,7 +331,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
             Style::default()
                 .add_modifier(Modifier::BOLD)
                 .bg(Color::Green)
-                .fg(Color::Black), // White text on Blue background for high contrast
+                .fg(Color::Black), // Use Black text on Green background for high contrast
         );
     f.render_stateful_widget(task_list, main_chunks[0], &mut state.list_state);
 
@@ -394,6 +395,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                 _ => (" Create Task ".to_string(), "> ", Color::Yellow),
             };
 
+            // Smart Tag Hint
             if state.mode == InputMode::Searching && state.input_buffer.starts_with('#') {
                 title_str.push_str(" [Enter to jump to tag] ");
             } else if state.mode == InputMode::Creating
