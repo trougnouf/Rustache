@@ -249,6 +249,7 @@ pub fn handle(app: &mut GuiApp, message: Message) -> Task<Message> {
         }
         Message::ClearYank => {
             app.yanked_uid = None;
+            app.creating_child_of = None;
             Task::none()
         }
         Message::MakeChild(target_uid) => {
