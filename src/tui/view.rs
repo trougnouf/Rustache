@@ -395,13 +395,14 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                 _ => (" Create Task ".to_string(), "> ", Color::Yellow),
             };
 
-            // Smart Tag Hint
-            if state.mode == InputMode::Searching && state.input_buffer.starts_with('#') {
-                title_str.push_str(" [Enter to jump to tag] ");
-            } else if state.mode == InputMode::Creating
-                && state.input_buffer.starts_with('#')
-                && state.creating_child_of.is_none()
-            {
+            // Smart Tag Hint - MERGED condition to satisfy clippy
+            let show_tag_hint = (state.mode == InputMode::Searching
+                && state.input_buffer.starts_with('#'))
+                || (state.mode == InputMode::Creating
+                    && state.input_buffer.starts_with('#')
+                    && state.creating_child_of.is_none());
+
+            if show_tag_hint {
                 title_str.push_str(" [Enter to jump to tag] ");
             }
 
@@ -520,7 +521,8 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                             "Ret:Target Spc:Vis Right:Solo *:All Tab:Tasks ?:Help".to_string()
                         }
                         SidebarMode::Categories => {
-                            "Ret:Toggle m:Match(AND/OR) *:Clear 1:Cals Tab:Tasks ?:Help".to_string()
+                            "Ret:Toggle m:Match(AND/OR) *:Show/Clear All 1:Cals Tab:Tasks ?:Help"
+                                .to_string()
                         }
                     },
                     Focus::Main => {
