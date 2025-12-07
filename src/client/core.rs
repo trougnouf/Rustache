@@ -863,6 +863,7 @@ fn three_way_merge(base: &Task, local: &Task, server: &Task) -> Option<Task> {
     merge_field!(categories);
     merge_field!(dependencies);
     merge_field!(parent_uid);
+    merge_field!(unmapped_properties);
 
     // Metadata is already from Server (via clone at start)
     // merged.etag = server.etag.clone();

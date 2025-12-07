@@ -1,5 +1,4 @@
 // File: ./src/model/item.rs
-// Contains the core structs and sorting logic
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -27,6 +26,14 @@ impl TaskStatus {
     }
 }
 
+// A struct to hold raw ICS properties we don't natively support yet
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RawProperty {
+    pub key: String,
+    pub value: String,
+    pub params: Vec<(String, String)>, // e.g. "CN" -> "John Doe"
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Task {
     pub uid: String,
@@ -35,7 +42,7 @@ pub struct Task {
     pub status: TaskStatus,
     pub estimated_duration: Option<u32>,
     pub due: Option<DateTime<Utc>>,
-    pub dtstart: Option<DateTime<Utc>>, // <--- NEW FIELD
+    pub dtstart: Option<DateTime<Utc>>,
     pub priority: u8,
     pub parent_uid: Option<String>,
     pub dependencies: Vec<String>,
@@ -45,6 +52,9 @@ pub struct Task {
     pub categories: Vec<String>,
     pub depth: usize,
     pub rrule: Option<String>,
+
+    // NEW: The bucket for everything else (Location, Attendees, etc.)
+    pub unmapped_properties: Vec<RawProperty>,
 }
 
 impl Task {
@@ -56,7 +66,7 @@ impl Task {
             status: TaskStatus::NeedsAction,
             estimated_duration: None,
             due: None,
-            dtstart: None, // <--- Init
+            dtstart: None,
             priority: 0,
             parent_uid: None,
             dependencies: Vec::new(),
@@ -66,6 +76,7 @@ impl Task {
             categories: Vec::new(),
             depth: 0,
             rrule: None,
+            unmapped_properties: Vec::new(), // Init empty
         };
         // Use the parser module
         task.apply_smart_input(input, aliases);
@@ -74,7 +85,6 @@ impl Task {
 
     pub fn compare_with_cutoff(&self, other: &Self, cutoff: Option<DateTime<Utc>>) -> Ordering {
         // 1. Sort by Status Priority
-        // InProcess (0) < NeedsAction (1) < Completed (2) < Cancelled (3)
         fn status_prio(s: TaskStatus) -> u8 {
             match s {
                 TaskStatus::InProcess => 0,
@@ -90,24 +100,23 @@ impl Task {
             return s1.cmp(&s2);
         }
 
-        // 2. Future Start Date Check (Scheduled Tasks)
-        // If a task hasn't started yet (dtstart > now), it should be pushed below available tasks
+        // 2. Future Start Date
         let now = Utc::now();
         let self_future = self.dtstart.map(|d| d > now).unwrap_or(false);
         let other_future = other.dtstart.map(|d| d > now).unwrap_or(false);
 
         match (self_future, other_future) {
-            (true, false) => return Ordering::Greater, // Self is future -> push down
-            (false, true) => return Ordering::Less,    // Other is future -> push self up
-            _ => {} // Both future or both present -> continue sorting
+            (true, false) => return Ordering::Greater,
+            (false, true) => return Ordering::Less,
+            _ => {}
         }
 
-        // 3. Helper to check if a task is within the "Timed High Priority" window
+        // 3. Cutoff Window
         let is_in_window = |t: &Task| -> bool {
             match (t.due, cutoff) {
-                (Some(d), Some(limit)) => d <= limit, // It has a date, and it's before the limit
-                (Some(_), None) => true,              // No limit? All dates are "in window"
-                (None, _) => false,                   // No date? Never in window
+                (Some(d), Some(limit)) => d <= limit,
+                (Some(_), None) => true,
+                (None, _) => false,
             }
         };
 
@@ -115,22 +124,17 @@ impl Task {
         let other_in = is_in_window(other);
 
         match (self_in, other_in) {
-            // Case A: Both are in the "Immediate Window" -> Sort by Date
             (true, true) => {
                 if self.due != other.due {
                     return self.due.cmp(&other.due);
                 }
             }
-            // Case B: Only one is in window -> It wins
             (true, false) => return Ordering::Less,
             (false, true) => return Ordering::Greater,
-            // Case C: Neither in window (Far future OR No Date) -> Sort by Priority
             (false, false) => {}
         }
 
-        // 4. Priority Sort (1 is High, 9 is Low, 0 is None)
-        // We normalize 0 (None) to 5 (Normal) so that:
-        // !1 (High) < !5/None (Normal) < !9 (Low)
+        // 4. Priority
         let p1 = if self.priority == 0 { 5 } else { self.priority };
         let p2 = if other.priority == 0 {
             5
@@ -142,8 +146,6 @@ impl Task {
             return p1.cmp(&p2);
         }
 
-        // Tie-breaker: If priorities are equal, but one has a date (even if far future),
-        // stick to Date then Alphabetical.
         match (self.due, other.due) {
             (Some(d1), Some(d2)) => {
                 if d1 != d2 {
@@ -208,7 +210,6 @@ impl Task {
 
 impl Ord for Task {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Use custom comparator
         self.compare_with_cutoff(other, None)
     }
 }

@@ -1,17 +1,15 @@
 // File: ./src/model/adapter.rs
-// Handles ICS serialization/deserialization
-use crate::model::item::{Task, TaskStatus};
+use crate::model::item::{RawProperty, Task, TaskStatus};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use icalendar::{Calendar, CalendarComponent, Component, Todo, TodoStatus};
 use rrule::RRuleSet;
+use std::collections::HashSet;
 use std::str::FromStr;
 use uuid::Uuid;
 
 impl Task {
     pub fn respawn(&self) -> Option<Task> {
         let rule_str = self.rrule.as_ref()?;
-
-        // Recurrence should be calculated based on DTSTART if available, otherwise DUE
         let seed_date = self.dtstart.or(self.due)?;
 
         let dtstart_str = seed_date.format("%Y%m%dT%H%M%SZ").to_string();
@@ -21,7 +19,7 @@ impl Task {
             let result = rrule_set.all(2);
             let dates = result.dates;
             if dates.len() > 1 {
-                let next_occurrence = dates[1]; // The next date in the series
+                let next_occurrence = dates[1];
                 let next_start = Utc.from_utc_datetime(&next_occurrence.naive_utc());
 
                 let mut next_task = self.clone();
@@ -31,15 +29,12 @@ impl Task {
                 next_task.status = TaskStatus::NeedsAction;
                 next_task.dependencies.clear();
 
-                // 1. Set new Start Date
                 if self.dtstart.is_some() {
                     next_task.dtstart = Some(next_start);
                 }
 
-                // 2. Set new Due Date (shifted by the same duration)
                 if let Some(old_due) = self.due {
                     let duration = old_due - seed_date;
-                    // If dtstart was missing, seed_date == old_due, so duration is 0, works fine.
                     next_task.due = Some(next_start + duration);
                 }
 
@@ -65,7 +60,6 @@ impl Task {
             TaskStatus::Cancelled => todo.status(TodoStatus::Cancelled),
         };
 
-        // Helper for ISO Duration
         fn format_iso_duration(mins: u32) -> String {
             if mins.is_multiple_of(24 * 60) {
                 format!("P{}D", mins / (24 * 60))
@@ -84,18 +78,13 @@ impl Task {
         if let Some(dt) = self.due {
             let formatted = dt.format("%Y%m%dT%H%M%SZ").to_string();
             todo.add_property("DUE", &formatted);
-
-            // Due exists -> Use X-ESTIMATED-DURATION for the UI estimate
             if let Some(mins) = self.estimated_duration {
                 let val = format_iso_duration(mins);
                 todo.add_property("X-ESTIMATED-DURATION", &val);
             }
-        } else {
-            // No Due -> Use Standard DURATION if estimated_duration is present
-            if let Some(mins) = self.estimated_duration {
-                let val = format_iso_duration(mins);
-                todo.add_property("DURATION", &val);
-            }
+        } else if let Some(mins) = self.estimated_duration {
+            let val = format_iso_duration(mins);
+            todo.add_property("DURATION", &val);
         }
         if self.priority > 0 {
             todo.priority(self.priority.into());
@@ -116,11 +105,20 @@ impl Task {
             todo.append_multi_property(prop);
         }
 
+        // --- WRITE BACK UNMAPPED PROPERTIES ---
+        for raw in &self.unmapped_properties {
+            let mut prop = icalendar::Property::new(&raw.key, &raw.value);
+            for (k, v) in &raw.params {
+                prop.add_parameter(k, v);
+            }
+            todo.append_multi_property(prop);
+        }
+
         let mut calendar = Calendar::new();
         calendar.push(todo);
         let mut ics = calendar.to_string();
 
-        // Manual injection of CATEGORIES to handle comma separation correctly
+        // Manual injection of CATEGORIES (icalendar crate doesn't handle comma-escaping perfectly for this specific case sometimes)
         if !self.categories.is_empty() {
             let escaped_cats: Vec<String> = self
                 .categories
@@ -174,14 +172,11 @@ impl Task {
             .and_then(|p| p.value().parse::<u8>().ok())
             .unwrap_or(0);
 
-        // Helper to parse date strings
         let parse_date_prop = |val: &str| -> Option<DateTime<Utc>> {
             if val.len() == 8 {
                 NaiveDate::parse_from_str(val, "%Y%m%d")
                     .ok()
-                    .and_then(|d| d.and_hms_opt(0, 0, 0)) // Start of day for start dates? or End?
-                    // Usually due is End of day, Start is Start of day.
-                    // To keep it simple, let's treat pure dates as UTC midnight.
+                    .and_then(|d| d.and_hms_opt(0, 0, 0))
                     .map(|d| d.and_utc())
             } else {
                 NaiveDateTime::parse_from_str(
@@ -199,7 +194,6 @@ impl Task {
 
         let due = todo.properties().get("DUE").and_then(|p| {
             let val = p.value();
-            // Special case for Due Date: if YYYYMMDD, we often want End of Day
             if val.len() == 8 {
                 NaiveDate::parse_from_str(val, "%Y%m%d")
                     .ok()
@@ -220,7 +214,6 @@ impl Task {
             .get("RRULE")
             .map(|p| p.value().to_string());
 
-        // Duration Parsing
         let parse_dur = |val: &str| -> Option<u32> {
             let mut minutes = 0;
             let mut num_buf = String::new();
@@ -265,7 +258,6 @@ impl Task {
                 .and_then(|p| parse_dur(p.value()));
         }
 
-        // Categories
         let mut categories = Vec::new();
         if let Some(multi_props) = todo.multi_properties().get("CATEGORIES") {
             for prop in multi_props {
@@ -290,23 +282,9 @@ impl Task {
         categories.sort();
         categories.dedup();
 
-        // Related-To
         let mut parent_uid = None;
         let mut dependencies = Vec::new();
 
-        // Manual Parse (Fallback for lost duplicates in libdav/icalendar interaction if any)
-        // We use the icalendar lib properties mostly, but check raw if needed.
-        // Logic remains similar to previous:
-        let mut related_props = Vec::new();
-        if let Some(multi) = todo.multi_properties().get("RELATED-TO") {
-            related_props.extend(multi.iter());
-        }
-        if let Some(single) = todo.properties().get("RELATED-TO") {
-            related_props.push(single);
-        }
-
-        // To support robust parsing of RELTYPE parameters which might be hidden in the lib's Property struct:
-        // We'll trust the manual scan we wrote earlier which is more reliable for params.
         let unfolded = raw_ics.replace("\r\n ", "").replace("\n ", "");
         for line in unfolded.lines() {
             if line.starts_with("RELATED-TO")
@@ -325,6 +303,62 @@ impl Task {
             }
         }
 
+        // --- CAPTURE UNMAPPED PROPERTIES ---
+        // 1. Define list of keys we already handled above
+        let handled_keys: HashSet<&str> = HashSet::from([
+            "UID",
+            "SUMMARY",
+            "DESCRIPTION",
+            "STATUS",
+            "PRIORITY",
+            "DUE",
+            "DTSTART",
+            "RRULE",
+            "DURATION",
+            "X-ESTIMATED-DURATION",
+            "CATEGORIES",
+            "RELATED-TO",
+            "DTSTAMP",
+            "CREATED",
+            "LAST-MODIFIED",
+        ]);
+
+        let mut unmapped_properties = Vec::new();
+
+        // Helper to convert icalendar::Property to our RawProperty
+        let to_raw = |prop: &icalendar::Property| -> RawProperty {
+            let mut params = Vec::new();
+            // FIXED: param is &Parameter, directly access value()
+            for (k, param) in prop.params().iter() {
+                params.push((k.clone(), param.value().to_string()));
+            }
+            // Sort params so PartialEq works reliably for conflict resolution
+            params.sort();
+
+            RawProperty {
+                key: prop.key().to_string(),
+                value: prop.value().to_string(),
+                params,
+            }
+        };
+
+        // 2. Iterate ALL properties (single and multi)
+        for (key, prop) in todo.properties() {
+            if !handled_keys.contains(key.as_str()) {
+                unmapped_properties.push(to_raw(prop));
+            }
+        }
+        for (key, props) in todo.multi_properties() {
+            if !handled_keys.contains(key.as_str()) {
+                for prop in props {
+                    unmapped_properties.push(to_raw(prop));
+                }
+            }
+        }
+
+        // Sort unmapped properties by key so PartialEq works reliably in merge logic
+        unmapped_properties.sort_by(|a, b| a.key.cmp(&b.key).then(a.value.cmp(&b.value)));
+
         Ok(Task {
             uid,
             summary,
@@ -332,7 +366,7 @@ impl Task {
             status,
             estimated_duration,
             due,
-            dtstart, // <--- New
+            dtstart,
             priority,
             parent_uid,
             dependencies,
@@ -342,6 +376,7 @@ impl Task {
             categories,
             depth: 0,
             rrule,
+            unmapped_properties, // <--- SAVED
         })
     }
 }
