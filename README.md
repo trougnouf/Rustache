@@ -56,7 +56,7 @@ If a binary from one source doesn't work for you, try the other.
         sudo pacman -U cfait-*.pkg.tar.zst
         ```
 
-*   **Debian / Ubuntu:**
+*   **Debian-based Linux (including Ubuntu, Mint, ...):**
     *   Download the `.deb` file from [**Codeberg**](https://codeberg.org/trougnouf/cfait/releases) (Built on Arch) or (if you encounter library errors, e.g. `glibc`) from [**GitHub**](https://github.com/trougnouf/cfait/releases) (Built on Ubuntu 24.04).
     *   Install:
         ```bash
@@ -83,7 +83,7 @@ cargo install cfait --features gui
 cargo install cfait
 ```
 
-### C. For Development
+### C. From source (e.g. for development)
 
 If you want to contribute to Cfait, clone the repository and build it locally:
 
