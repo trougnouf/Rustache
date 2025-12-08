@@ -4,22 +4,21 @@ use crate::gui::icon;
 use crate::gui::message::Message;
 use crate::gui::state::GuiApp;
 use crate::model::Task as TodoTask;
+use std::time::Duration;
 
-use iced::widget::{Space, button, column, container, row, scrollable, text};
+use super::tooltip_style;
+use iced::widget::{Space, button, column, container, row, scrollable, text, tooltip};
 pub use iced::widget::{rich_text, span};
-use iced::{Border, Color, Element, Length, Theme};
+use iced::{Border, Color, Element, Length, Theme}; // Import from super (mod.rs)
 
 pub fn view_task_row<'a>(
     app: &'a GuiApp,
     index: usize,
     task: &'a TodoTask,
 ) -> Element<'a, Message> {
-    // 1. Check Blocked Status
+    // ... [setup: No Change] ...
     let is_blocked = app.store.is_blocked(task);
-
-    // Check if selected
     let is_selected = app.selected_uid.as_ref() == Some(&task.uid);
-
     let color = if is_blocked {
         Color::from_rgb(0.5, 0.5, 0.5)
     } else {
@@ -29,12 +28,11 @@ pub fn view_task_row<'a>(
             _ => Color::WHITE,
         }
     };
-
     let show_indent = app.active_cal_href.is_some() && app.search_value.is_empty();
     let indent_size = if show_indent { task.depth * 12 } else { 0 };
     let indent = Space::new().width(Length::Fixed(indent_size as f32));
 
-    // --- CUSTOM STYLES ---
+    // ... [Styles and Tag Builder: No Change] ...
     let action_style = |theme: &Theme, status: button::Status| -> button::Style {
         let palette = theme.extended_palette();
         let base = button::Style {
@@ -43,7 +41,6 @@ pub fn view_task_row<'a>(
             border: Border::default(),
             ..button::Style::default()
         };
-
         match status {
             button::Status::Active => base,
             button::Status::Hovered => button::Style {
@@ -70,7 +67,6 @@ pub fn view_task_row<'a>(
             },
         }
     };
-
     let danger_style = |theme: &Theme, status: button::Status| -> button::Style {
         let palette = theme.extended_palette();
         let base = button::Style {
@@ -79,7 +75,6 @@ pub fn view_task_row<'a>(
             border: Border::default(),
             ..button::Style::default()
         };
-
         match status {
             button::Status::Active => base,
             button::Status::Hovered => button::Style {
@@ -106,11 +101,8 @@ pub fn view_task_row<'a>(
             },
         }
     };
-
-    // --- Tag Builder ---
     let build_tags = || -> Element<'a, Message> {
         let mut tags_row: iced::widget::Row<'_, Message> = row![].spacing(3);
-
         if is_blocked {
             tags_row = tags_row.push(
                 container(text("[Blocked]").size(12).color(Color::WHITE))
@@ -125,18 +117,14 @@ pub fn view_task_row<'a>(
                     .padding(3),
             );
         }
-
         for cat in &task.categories {
             let (r, g, b) = color_utils::generate_color(cat);
-            // Fully opaque colors per user request
             let bg_color = Color::from_rgb(r, g, b);
             let text_color = if color_utils::is_dark(r, g, b) {
                 Color::WHITE
             } else {
                 Color::BLACK
             };
-
-            // Use Button for clickable tags
             tags_row = tags_row.push(
                 button(text(format!("#{}", cat)).size(12).color(text_color))
                     .style(move |_theme, status| {
@@ -149,8 +137,6 @@ pub fn view_task_row<'a>(
                             },
                             ..button::Style::default()
                         };
-
-                        // Add hover effect
                         match status {
                             button::Status::Hovered | button::Status::Pressed => button::Style {
                                 border: iced::Border {
@@ -167,7 +153,6 @@ pub fn view_task_row<'a>(
                     .on_press(Message::JumpToTag(cat.clone())),
             );
         }
-
         if let Some(mins) = task.estimated_duration {
             let label = if mins >= 525600 {
                 format!("{}y", mins / 525600)
@@ -182,7 +167,6 @@ pub fn view_task_row<'a>(
             } else {
                 format!("{}m", mins)
             };
-
             tags_row = tags_row.push(
                 container(text(label).size(10).color(Color::WHITE))
                     .style(|_| container::Style {
@@ -196,14 +180,11 @@ pub fn view_task_row<'a>(
                     .padding(3),
             );
         }
-
         if task.rrule.is_some() {
             tags_row = tags_row.push(container(icon::icon(icon::REPEAT).size(14)).padding(0));
         }
-
         tags_row.into()
     };
-
     let date_text: Element<'a, Message> = match task.due {
         Some(d) => container(
             text(d.format("%Y-%m-%d").to_string())
@@ -231,104 +212,186 @@ pub fn view_task_row<'a>(
             .padding(4)
             .width(Length::Fixed(25.0))
             .on_press(Message::ToggleDetails(task.uid.clone()));
-        actions = actions.push(info_btn);
+        // Apply tooltip_style
+        actions = actions.push(
+            tooltip(
+                info_btn,
+                text("Show Details").size(12),
+                tooltip::Position::Top,
+            )
+            .style(tooltip_style)
+            .delay(Duration::from_millis(700)),
+        );
     } else {
         actions = actions.push(Space::new().width(Length::Fixed(25.0)));
     }
 
     if let Some(yanked) = &app.yanked_uid {
         if *yanked != task.uid {
+            let block_btn = button(icon::icon(icon::BLOCKED).size(14))
+                .style(action_style)
+                .padding(4)
+                .on_press(Message::AddDependency(task.uid.clone()));
             actions = actions.push(
-                button(icon::icon(icon::BLOCKED).size(14))
-                    .style(action_style)
-                    .padding(4)
-                    .on_press(Message::AddDependency(task.uid.clone())),
+                tooltip(
+                    block_btn,
+                    text("Block (Depends On)").size(12),
+                    tooltip::Position::Top,
+                )
+                .style(tooltip_style)
+                .delay(Duration::from_millis(700)),
             );
+            let child_btn = button(icon::icon(icon::CHILD).size(14))
+                .style(action_style)
+                .padding(4)
+                .on_press(Message::MakeChild(task.uid.clone()));
             actions = actions.push(
-                button(icon::icon(icon::CHILD).size(14))
-                    .style(action_style)
-                    .padding(4)
-                    .on_press(Message::MakeChild(task.uid.clone())),
+                tooltip(
+                    child_btn,
+                    text("Make Child").size(12),
+                    tooltip::Position::Top,
+                )
+                .style(tooltip_style)
+                .delay(Duration::from_millis(700)),
             );
         } else {
+            let unlink_btn = button(icon::icon(icon::UNLINK).size(14))
+                .style(button::primary)
+                .padding(4)
+                .on_press(Message::ClearYank);
             actions = actions.push(
-                button(icon::icon(icon::UNLINK).size(14))
-                    .style(button::primary)
-                    .padding(4)
-                    .on_press(Message::ClearYank),
+                tooltip(unlink_btn, text("Unlink").size(12), tooltip::Position::Top)
+                    .style(tooltip_style)
+                    .delay(Duration::from_millis(700)),
             );
+            let create_child_btn = button(icon::icon(icon::CREATE_CHILD).size(14))
+                .style(button::primary)
+                .padding(4)
+                .on_press(Message::StartCreateChild(task.uid.clone()));
             actions = actions.push(
-                button(icon::icon(icon::CREATE_CHILD).size(14))
-                    .style(button::primary)
-                    .padding(4)
-                    .on_press(Message::StartCreateChild(task.uid.clone())),
+                tooltip(
+                    create_child_btn,
+                    text("Create Subtask").size(12),
+                    tooltip::Position::Top,
+                )
+                .style(tooltip_style)
+                .delay(Duration::from_millis(700)),
             );
         }
     } else {
+        let link_btn = button(icon::icon(icon::LINK).size(14))
+            .style(action_style)
+            .padding(4)
+            .on_press(Message::YankTask(task.uid.clone()));
         actions = actions.push(
-            button(icon::icon(icon::LINK).size(14))
-                .style(action_style)
-                .padding(4)
-                .on_press(Message::YankTask(task.uid.clone())),
+            tooltip(
+                link_btn,
+                text("Yank (Copy ID)").size(12),
+                tooltip::Position::Top,
+            )
+            .style(tooltip_style)
+            .delay(Duration::from_millis(700)),
         );
     }
 
     if task.status != crate::model::TaskStatus::Completed
         && task.status != crate::model::TaskStatus::Cancelled
     {
-        let (action_icon, msg_status) = if task.status == crate::model::TaskStatus::InProcess {
-            (icon::PAUSE, crate::model::TaskStatus::NeedsAction)
-        } else {
-            (icon::PLAY, crate::model::TaskStatus::InProcess)
-        };
+        let (action_icon, msg_status, tooltip_text) =
+            if task.status == crate::model::TaskStatus::InProcess {
+                (
+                    icon::PAUSE,
+                    crate::model::TaskStatus::NeedsAction,
+                    "Pause Task",
+                )
+            } else {
+                (
+                    icon::PLAY,
+                    crate::model::TaskStatus::InProcess,
+                    "Start Task",
+                )
+            };
+        let status_toggle_btn = button(icon::icon(action_icon).size(14))
+            .style(action_style)
+            .padding(4)
+            .on_press(Message::SetTaskStatus(index, msg_status));
         actions = actions.push(
-            button(icon::icon(action_icon).size(14))
-                .style(action_style)
-                .padding(4)
-                .on_press(Message::SetTaskStatus(index, msg_status)),
+            tooltip(
+                status_toggle_btn,
+                text(tooltip_text).size(12),
+                tooltip::Position::Top,
+            )
+            .style(tooltip_style)
+            .delay(Duration::from_millis(700)),
         );
     }
 
+    let plus_btn = button(icon::icon(icon::PLUS).size(14))
+        .style(action_style)
+        .padding(4)
+        .on_press(Message::ChangePriority(index, 1));
     actions = actions.push(
-        button(icon::icon(icon::PLUS).size(14))
-            .style(action_style)
-            .padding(4)
-            .on_press(Message::ChangePriority(index, 1)),
-    );
-    actions = actions.push(
-        button(icon::icon(icon::MINUS).size(14))
-            .style(action_style)
-            .padding(4)
-            .on_press(Message::ChangePriority(index, -1)),
-    );
-    actions = actions.push(
-        button(icon::icon(icon::EDIT).size(14))
-            .style(action_style)
-            .padding(4)
-            .on_press(Message::EditTaskStart(index)),
+        tooltip(
+            plus_btn,
+            text("Increase Priority").size(12),
+            tooltip::Position::Top,
+        )
+        .style(tooltip_style)
+        .delay(Duration::from_millis(700)),
     );
 
+    let minus_btn = button(icon::icon(icon::MINUS).size(14))
+        .style(action_style)
+        .padding(4)
+        .on_press(Message::ChangePriority(index, -1));
     actions = actions.push(
-        button(icon::icon(icon::TRASH).size(14))
+        tooltip(
+            minus_btn,
+            text("Decrease Priority").size(12),
+            tooltip::Position::Top,
+        )
+        .style(tooltip_style)
+        .delay(Duration::from_millis(700)),
+    );
+
+    let edit_btn = button(icon::icon(icon::EDIT).size(14))
+        .style(action_style)
+        .padding(4)
+        .on_press(Message::EditTaskStart(index));
+    actions = actions.push(
+        tooltip(edit_btn, text("Edit").size(12), tooltip::Position::Top)
+            .style(tooltip_style)
+            .delay(Duration::from_millis(700)),
+    );
+
+    let delete_btn = button(icon::icon(icon::TRASH).size(14))
+        .style(danger_style)
+        .padding(4)
+        .on_press(Message::DeleteTask(index));
+    actions = actions.push(
+        tooltip(delete_btn, text("Delete").size(12), tooltip::Position::Top)
+            .style(tooltip_style)
+            .delay(Duration::from_millis(700)),
+    );
+
+    if task.status != crate::model::TaskStatus::Completed
+        && task.status != crate::model::TaskStatus::Cancelled
+    {
+        let cancel_btn = button(icon::icon(icon::CROSS).size(14))
             .style(danger_style)
             .padding(4)
-            .on_press(Message::DeleteTask(index)),
-    );
-
-    if task.status != crate::model::TaskStatus::Completed
-        && task.status != crate::model::TaskStatus::Cancelled
-    {
+            .on_press(Message::SetTaskStatus(
+                index,
+                crate::model::TaskStatus::Cancelled,
+            ));
         actions = actions.push(
-            button(icon::icon(icon::CROSS).size(14))
-                .style(danger_style)
-                .padding(4)
-                .on_press(Message::SetTaskStatus(
-                    index,
-                    crate::model::TaskStatus::Cancelled,
-                )),
+            tooltip(cancel_btn, text("Cancel").size(12), tooltip::Position::Top)
+                .style(tooltip_style)
+                .delay(Duration::from_millis(700)),
         );
     }
 
+    // ... [Status Button, Rows, details expansion: No Change] ...
     let (icon_char, bg_color, border_color) = match task.status {
         crate::model::TaskStatus::InProcess => (
             icon::PLAY_FA,
@@ -349,7 +412,6 @@ pub fn view_task_row<'a>(
             (' ', Color::TRANSPARENT, Color::from_rgb(0.5, 0.5, 0.5))
         }
     };
-
     let status_btn = button(
         container(if icon_char != ' ' {
             icon::icon(icon_char).size(12).color(Color::WHITE)
@@ -376,7 +438,6 @@ pub fn view_task_row<'a>(
             },
             ..button::Style::default()
         };
-
         match status {
             iced::widget::button::Status::Hovered => button::Style {
                 border: iced::Border {
@@ -429,7 +490,6 @@ pub fn view_task_row<'a>(
         .spacing(6)
         .align_y(iced::Alignment::Center)
     };
-
     let main_text_col = column![
         title_row,
         if !place_inline && has_metadata {
@@ -440,7 +500,6 @@ pub fn view_task_row<'a>(
     ]
     .width(Length::Fill)
     .spacing(1);
-
     let row_main = row![indent, status_btn, main_text_col, date_text, actions]
         .spacing(10)
         .align_y(iced::Alignment::Center);
@@ -451,7 +510,6 @@ pub fn view_task_row<'a>(
         bottom: 2.0,
         left: 6.0,
     });
-
     if is_selected {
         padded_row = padded_row.style(|theme: &Theme| {
             let palette = theme.extended_palette();
@@ -480,7 +538,6 @@ pub fn view_task_row<'a>(
 
     if is_expanded {
         let mut details_col = column![].spacing(5);
-
         if !task.description.is_empty() {
             details_col = details_col.push(
                 text(&task.description)
@@ -488,27 +545,33 @@ pub fn view_task_row<'a>(
                     .color(Color::from_rgb(0.7, 0.7, 0.7)),
             );
         }
-
         if let Some(p_uid) = &task.parent_uid {
             let p_name = app
                 .store
                 .get_summary(p_uid)
                 .unwrap_or_else(|| "Unknown Parent".to_string());
+            let remove_parent_btn = button(icon::icon(icon::CROSS).size(10))
+                .style(button::danger)
+                .padding(2)
+                .on_press(Message::RemoveParent(task.uid.clone()));
+            // Apply tooltip_style
             let row = row![
                 text("Parent:")
                     .size(12)
                     .color(Color::from_rgb(0.4, 0.8, 0.4)),
                 text(p_name).size(12),
-                button(icon::icon(icon::CROSS).size(10))
-                    .style(button::danger)
-                    .padding(2)
-                    .on_press(Message::RemoveParent(task.uid.clone()))
+                tooltip(
+                    remove_parent_btn,
+                    text("Remove Parent").size(12),
+                    tooltip::Position::Top
+                )
+                .style(tooltip_style)
+                .delay(Duration::from_millis(700))
             ]
             .spacing(5)
             .align_y(iced::Alignment::Center);
             details_col = details_col.push(row);
         }
-
         if !task.dependencies.is_empty() {
             details_col = details_col.push(
                 text("[Blocked By]:")
@@ -522,23 +585,28 @@ pub fn view_task_row<'a>(
                     .unwrap_or_else(|| "Unknown Task".to_string());
                 let is_done = app.store.is_task_done(dep_uid).unwrap_or(false);
                 let check = if is_done { "[x]" } else { "[ ]" };
-
+                let remove_dep_btn = button(icon::icon(icon::CROSS).size(10))
+                    .style(button::danger)
+                    .padding(2)
+                    .on_press(Message::RemoveDependency(task.uid.clone(), dep_uid.clone()));
+                // Apply tooltip_style
                 let dep_row = row![
                     text(format!("{} {}", check, name))
                         .size(12)
                         .color(Color::from_rgb(0.6, 0.6, 0.6)),
-                    button(icon::icon(icon::CROSS).size(10))
-                        .style(button::danger)
-                        .padding(2)
-                        .on_press(Message::RemoveDependency(task.uid.clone(), dep_uid.clone()))
+                    tooltip(
+                        remove_dep_btn,
+                        text("Remove Dependency").size(12),
+                        tooltip::Position::Top
+                    )
+                    .style(tooltip_style)
+                    .delay(Duration::from_millis(700))
                 ]
                 .spacing(5)
                 .align_y(iced::Alignment::Center);
-
                 details_col = details_col.push(dep_row);
             }
         }
-
         if app.calendars.len() > 1 {
             let current_cal_href = task.calendar_href.clone();
             let targets: Vec<_> = app
@@ -546,13 +614,10 @@ pub fn view_task_row<'a>(
                 .iter()
                 .filter(|c| c.href != current_cal_href && !app.disabled_calendars.contains(&c.href))
                 .collect();
-
             let move_label = text("Move to:")
                 .size(12)
                 .color(Color::from_rgb(0.5, 0.5, 0.5));
-
             let mut move_row = row![].spacing(5).align_y(iced::Alignment::Center);
-
             for cal in targets {
                 move_row = move_row.push(
                     button(text(&cal.name).size(10))
@@ -561,14 +626,12 @@ pub fn view_task_row<'a>(
                         .on_press(Message::MoveTask(task.uid.clone(), cal.href.clone())),
                 );
             }
-
             details_col = details_col.push(
                 row![move_label, scrollable(move_row).height(Length::Fixed(30.0))]
                     .spacing(10)
                     .align_y(iced::Alignment::Center),
             );
         }
-
         let desc_row = row![
             Space::new().width(Length::Fixed(indent_size as f32 + 30.0)),
             details_col

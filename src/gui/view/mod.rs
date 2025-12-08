@@ -1,4 +1,5 @@
 // File: src/gui/view/mod.rs
+use std::time::Duration;
 pub mod help;
 pub mod settings;
 pub mod sidebar;
@@ -14,8 +15,32 @@ use crate::gui::view::task_row::view_task_row;
 use crate::storage::LOCAL_CALENDAR_HREF;
 
 use iced::widget::scrollable::{Direction, Scrollbar};
-use iced::widget::{MouseArea, Space, column, container, row, scrollable, stack, svg, text};
+use iced::widget::{
+    MouseArea, Space, column, container, row, scrollable, stack, svg, text, tooltip,
+};
 use iced::{Color, Element, Length, Theme, mouse};
+
+/// Shared style for tooltips with slight transparency
+pub fn tooltip_style(theme: &Theme) -> container::Style {
+    let palette = theme.extended_palette();
+    container::Style {
+        // 85% Opacity Background
+        background: Some(
+            Color {
+                a: 0.85,
+                ..palette.background.weak.color
+            }
+            .into(),
+        ),
+        text_color: Some(palette.background.weak.text),
+        border: iced::Border {
+            radius: 5.0.into(),
+            width: 1.0,
+            color: palette.background.strong.color,
+        },
+        ..container::Style::default()
+    }
+}
 
 pub fn root_view(app: &GuiApp) -> Element<'_, Message> {
     match app.state {
@@ -28,12 +53,11 @@ pub fn root_view(app: &GuiApp) -> Element<'_, Message> {
         AppState::Onboarding | AppState::Settings => view_settings(app),
         AppState::Help => view_help(),
         AppState::Active => {
-            // --- LOGO POSITION LOGIC ---
-            // Estimate sidebar content height to decide where to place the logo.
-            const ITEM_HEIGHT_CAL: f32 = 44.0; // ~16 text + 20 padding + 8 spacing
-            const ITEM_HEIGHT_TAG: f32 = 34.0; // ~16 text + 10 spacing
-            const SIDEBAR_CHROME: f32 = 110.0; // Tabs + Footer + Padding
-            const LOGO_SPACE_REQUIRED: f32 = 140.0; // 100 size + 40 padding
+            // ... [Layout logic: No Change] ...
+            const ITEM_HEIGHT_CAL: f32 = 44.0;
+            const ITEM_HEIGHT_TAG: f32 = 34.0;
+            const SIDEBAR_CHROME: f32 = 110.0;
+            const LOGO_SPACE_REQUIRED: f32 = 140.0;
 
             let content_height = match app.sidebar_mode {
                 SidebarMode::Calendars => {
@@ -57,10 +81,8 @@ pub fn root_view(app: &GuiApp) -> Element<'_, Message> {
             };
 
             let available_height = app.current_window_size.height - SIDEBAR_CHROME;
-            // Only move logo if there is strictly enough space
             let show_logo_in_sidebar = (available_height - content_height) > LOGO_SPACE_REQUIRED;
 
-            // Main App Layout
             let content_layout = row![
                 view_sidebar(app, show_logo_in_sidebar),
                 iced::widget::rule::vertical(1),
@@ -69,15 +91,14 @@ pub fn root_view(app: &GuiApp) -> Element<'_, Message> {
                     .center_x(Length::Fill)
             ];
 
+            // ... [Resize Grips and Stack: No Change] ...
             let main_container = container(content_layout)
                 .width(Length::Fill)
                 .height(Length::Fill);
 
-            // --- Resize Grips ---
             let t = 6.0;
             let c = 12.0;
 
-            // Edges
             let n_grip = MouseArea::new(
                 container(text(""))
                     .width(Length::Fill)
@@ -110,7 +131,6 @@ pub fn root_view(app: &GuiApp) -> Element<'_, Message> {
             .on_press(Message::ResizeStart(ResizeDirection::West))
             .interaction(mouse::Interaction::ResizingHorizontally);
 
-            // Corners
             let nw_grip = MouseArea::new(
                 container(text(""))
                     .width(Length::Fixed(c))
@@ -188,12 +208,11 @@ pub fn root_view(app: &GuiApp) -> Element<'_, Message> {
 }
 
 fn view_sidebar(app: &GuiApp, show_logo: bool) -> Element<'_, Message> {
-    // Custom style: Amber background, BLACK text
     let active_tab_style =
         |_theme: &Theme, status: iced::widget::button::Status| -> iced::widget::button::Style {
             let base = iced::widget::button::Style {
                 background: Some(Color::from_rgb(1.0, 0.6, 0.0).into()),
-                text_color: Color::BLACK, // BLACK Text for readability
+                text_color: Color::BLACK,
                 border: iced::Border {
                     radius: 4.0.into(),
                     ..Default::default()
@@ -245,32 +264,44 @@ fn view_sidebar(app: &GuiApp, show_logo: bool) -> Element<'_, Message> {
         SidebarMode::Categories => view_sidebar_categories(app),
     };
 
+    let settings_btn = iced::widget::button(
+        container(icon::icon(icon::SETTINGS_GEAR).size(20))
+            .width(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+    )
+    .padding(0)
+    .height(Length::Fixed(40.0))
+    .width(Length::Fill)
+    .style(iced::widget::button::secondary)
+    .on_press(Message::OpenSettings);
+
+    let help_btn = iced::widget::button(
+        container(icon::icon(icon::HELP_RHOMBUS).size(20))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+    )
+    .padding(0)
+    .height(Length::Fixed(40.0))
+    .width(Length::Fixed(50.0))
+    .style(iced::widget::button::secondary)
+    .on_press(Message::OpenHelp);
+
+    // Apply tooltip_style
     let footer = row![
-        iced::widget::button(
-            container(icon::icon(icon::SETTINGS_GEAR).size(20))
-                .width(Length::Fill)
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
+        tooltip(
+            settings_btn,
+            text("Settings").size(12),
+            tooltip::Position::Top
         )
-        .padding(0)
-        .height(Length::Fixed(40.0))
-        .width(Length::Fill)
-        .style(iced::widget::button::secondary)
-        .on_press(Message::OpenSettings),
-        iced::widget::button(
-            container(icon::icon(icon::HELP_RHOMBUS).size(20))
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-        )
-        .padding(0)
-        .height(Length::Fixed(40.0))
-        .width(Length::Fixed(50.0))
-        .style(iced::widget::button::secondary)
-        .on_press(Message::OpenHelp)
+        .style(tooltip_style)
+        .delay(Duration::from_millis(700)),
+        tooltip(help_btn, text("Help").size(12), tooltip::Position::Top)
+            .style(tooltip_style)
+            .delay(Duration::from_millis(700))
     ]
     .spacing(5);
 
-    // Sidebar structure
     let mut sidebar_col = column![
         tabs,
         scrollable(content)
@@ -312,7 +343,6 @@ fn view_sidebar(app: &GuiApp, show_logo: bool) -> Element<'_, Message> {
 }
 
 fn view_main_content(app: &GuiApp, show_logo: bool) -> Element<'_, Message> {
-    // --- 1. PREPARE HEADER DATA ---
     let title_text = if app.loading {
         "Loading...".to_string()
     } else if app.active_cal_href.is_none() {
@@ -346,11 +376,8 @@ fn view_main_content(app: &GuiApp, show_logo: bool) -> Element<'_, Message> {
         }
     }
 
-    // --- 2. BUILD HEADER ROW ---
-
     let mut title_group = row![].spacing(10).align_y(iced::Alignment::Center);
 
-    // Conditionally show logo in header
     if show_logo {
         title_group = title_group.push(
             svg(svg::Handle::from_memory(icon::LOGO))
@@ -380,11 +407,20 @@ fn view_main_content(app: &GuiApp, show_logo: bool) -> Element<'_, Message> {
         );
     }
 
+    let refresh_btn = iced::widget::button(icon::icon(icon::REFRESH).size(16))
+        .style(iced::widget::button::text)
+        .padding(4)
+        .on_press(Message::Refresh);
+
+    // Apply tooltip_style
     left_section = left_section.push(
-        iced::widget::button(icon::icon(icon::REFRESH).size(16))
-            .style(iced::widget::button::text)
-            .padding(4)
-            .on_press(Message::Refresh),
+        tooltip(
+            refresh_btn,
+            text("Force Sync").size(12),
+            tooltip::Position::Bottom,
+        )
+        .style(tooltip_style)
+        .delay(Duration::from_millis(700)),
     );
 
     let subtitle_text = text(subtitle)
@@ -430,7 +466,6 @@ fn view_main_content(app: &GuiApp, show_logo: bool) -> Element<'_, Message> {
 
     let header_drag_area = MouseArea::new(header_row).on_press(Message::WindowDragged);
 
-    // --- 3. EXPORT UI ---
     let mut export_ui: Element<'_, Message> = row![].into();
     if app.active_cal_href.as_deref() == Some(LOCAL_CALENDAR_HREF) {
         let targets: Vec<_> = app
@@ -464,7 +499,6 @@ fn view_main_content(app: &GuiApp, show_logo: bool) -> Element<'_, Message> {
         }
     }
 
-    // --- 4. MAIN CONTENT ---
     let input_area = view_input_area(app);
     let mut main_col = column![header_drag_area, export_ui, input_area];
 
