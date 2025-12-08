@@ -1,11 +1,10 @@
 // File: src/gui/view/sidebar.rs
-
 use crate::gui::icon;
 use crate::gui::message::Message;
 use crate::gui::state::GuiApp;
 use crate::store::UNCATEGORIZED_ID;
 use iced::widget::{Space, button, checkbox, column, container, row, text, toggler};
-use iced::{Color, Element, Length};
+use iced::{Color, Element, Length, Theme};
 
 pub fn view_sidebar_calendars(app: &GuiApp) -> Element<'_, Message> {
     let are_all_visible = app
@@ -32,33 +31,66 @@ pub fn view_sidebar_calendars(app: &GuiApp) -> Element<'_, Message> {
                 let is_visible = !app.hidden_calendars.contains(&cal.href);
                 let is_target = app.active_cal_href.as_ref() == Some(&cal.href);
 
-                let check = checkbox(is_visible)
-                    .on_toggle(move |v| Message::ToggleCalendarVisibility(cal.href.clone(), v));
+                // --- 1. Determine Icon & Color based on state ---
+                let (icon_char, icon_color) = if is_target {
+                    // Active Target: Warm Orange "Save Edit" icon
+                    (icon::CONTENT_SAVE_EDIT, Color::from_rgb(1.0, 0.6, 0.0))
+                } else if is_visible {
+                    // Visible: Eye icon
+                    (icon::EYE, Color::from_rgb(0.7, 0.7, 0.7))
+                } else {
+                    // Hidden: Closed Eye icon
+                    (icon::EYE_CLOSED, Color::from_rgb(0.4, 0.4, 0.4))
+                };
 
+                // Visibility Toggle Button (replaces checkbox)
+                let vis_btn = button(icon::icon(icon_char).size(16).style(move |_| text::Style {
+                    color: Some(icon_color),
+                }))
+                .style(button::text)
+                .padding(8)
+                .on_press(Message::ToggleCalendarVisibility(
+                    cal.href.clone(),
+                    !is_visible,
+                ));
+
+                // --- 2. Calendar Name Label ---
                 let mut label = button(text(&cal.name).size(16))
                     .width(Length::Fill)
                     .padding(10)
                     .on_press(Message::SelectCalendar(cal.href.clone()));
 
-                label = if is_target {
-                    label.style(button::primary)
+                // Style the label
+                if is_target {
+                    label = label.style(|_theme: &Theme, _status| button::Style {
+                        text_color: Color::from_rgb(1.0, 0.6, 0.0), // Warm Orange text
+                        background: Some(Color::from_rgba(1.0, 0.6, 0.0, 0.1).into()), // Subtle orange bg
+                        ..button::Style::default()
+                    });
+                } else if !is_visible {
+                    // Hidden calendars are dimmed
+                    label = label.style(|_theme: &Theme, _status| button::Style {
+                        text_color: Color::from_rgb(0.5, 0.5, 0.5),
+                        ..button::Style::default()
+                    });
                 } else {
-                    label.style(button::text)
-                };
+                    label = label.style(button::text);
+                }
 
+                // Focus/Isolate Button
                 let focus_btn = button(icon::icon(icon::ARROW_RIGHT).size(14))
                     .style(button::text)
                     .padding(10)
                     .on_press(Message::IsolateCalendar(cal.href.clone()));
 
-                row![check, label, focus_btn]
-                    .spacing(2)
+                row![vis_btn, label, focus_btn]
+                    .spacing(0)
                     .align_y(iced::Alignment::Center)
                     .into()
             })
             .collect::<Vec<_>>(),
     )
-    .spacing(5)
+    .spacing(2)
     .width(Length::Fill);
 
     column![toggle_container, list].spacing(5).into()

@@ -1,4 +1,4 @@
-// File: ./src/gui/icon.rs
+// File: src/gui/icon.rs
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -50,3 +50,8 @@ pub const HELP_RHOMBUS: char = '\u{f0625}'; // nf-md-help_circle_outline
 
 // Window Controls
 pub const WINDOW_MINIMIZE: char = '\u{f2d1}'; // nf-fa-window_minimize
+
+// Calendar State Icons
+pub const CONTENT_SAVE_EDIT: char = '\u{f0cfb}'; // nf-md-content_save_edit
+pub const EYE: char = '\u{ea70}'; // nf-cod-eye
+pub const EYE_CLOSED: char = '\u{eae7}'; // nf-cod-eye_closed
