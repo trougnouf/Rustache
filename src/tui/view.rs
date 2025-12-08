@@ -1,8 +1,10 @@
 // File: src/tui/view.rs
+use crate::color_utils;
 use crate::storage::LOCAL_CALENDAR_HREF;
 use crate::store::UNCATEGORIZED_ID;
 use crate::tui::action::SidebarMode;
-use crate::tui::state::{AppState, Focus, InputMode};
+use crate::tui::state::{AppState, Focus, InputMode}; // Import util
+
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -12,7 +14,7 @@ use ratatui::{
 };
 
 pub fn draw(f: &mut Frame, state: &mut AppState) {
-    // PREPARE HELP CONTENT FIRST (To calculate height)
+    // ... [Help text definition remains same] ...
     let full_help_text = vec![
         Line::from(vec![
             Span::styled(
@@ -77,14 +79,13 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         ]),
     ];
 
-    // DYNAMIC LAYOUT
+    // ... [Layout calculation remains same] ...
     let footer_height = if state.mode == InputMode::EditingDescription {
         Constraint::Length(10)
     } else if state.show_full_help {
-        // Height = Lines + Borders(2)
         Constraint::Length(full_help_text.len() as u16 + 2)
     } else {
-        Constraint::Length(3) // Standard compact footer
+        Constraint::Length(3)
     };
 
     let v_chunks = Layout::default()
@@ -111,6 +112,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
 
     let (sidebar_title, sidebar_items) = match state.sidebar_mode {
         SidebarMode::Calendars => {
+            // ... [Calendar sidebar logic remains same] ...
             let items: Vec<ListItem> = state
                 .calendars
                 .iter()
@@ -160,13 +162,25 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                         "[ ]"
                     };
 
-                    let display_name = if c == UNCATEGORIZED_ID {
-                        format!("Uncategorized ({})", count)
+                    // === Colored Tag Logic for Sidebar ===
+                    if c == UNCATEGORIZED_ID {
+                        ListItem::new(Line::from(format!(
+                            "{} Uncategorized ({})",
+                            selected, count
+                        )))
                     } else {
-                        format!("#{} ({})", c, count)
-                    };
+                        let (r, g, b) = color_utils::generate_color(c);
+                        let color =
+                            Color::Rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
 
-                    ListItem::new(Line::from(format!("{} {}", selected, display_name)))
+                        // Only color the '#'
+                        let spans = vec![
+                            Span::raw(format!("{} ", selected)),
+                            Span::styled("#", Style::default().fg(color)),
+                            Span::raw(format!("{} ({})", c, count)),
+                        ];
+                        ListItem::new(Line::from(spans))
+                    }
                 })
                 .collect();
             let logic = if state.match_all_categories {
@@ -193,18 +207,15 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
     f.render_stateful_widget(sidebar, h_chunks[0], &mut state.cal_state);
 
     // --- Task List ---
-    // Calculate available width for content (Total Width - Borders (2))
     let list_inner_width = main_chunks[0].width.saturating_sub(2) as usize;
 
     let task_items: Vec<ListItem> = state
         .tasks
         .iter()
         .map(|t| {
-            // Logic: Check if blocked
+            // ... [Task Row Logic] ...
             let is_blocked = state.store.is_blocked(t);
 
-            // Left Side Style (Checkbox, Title, Metadata)
-            // Blocked items are DarkGray, but Highlight style will override FG to Reset when selected
             let base_style = if is_blocked {
                 Style::default().fg(Color::DarkGray)
             } else {
@@ -254,43 +265,35 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
 
             let recur_str = if t.rrule.is_some() { " (R)" } else { "" };
 
-            // Tags (Right aligned, Cyan)
-            let tags_vec: Vec<String> = t.categories.iter().map(|c| format!("#{}", c)).collect();
-            let tags_str = if tags_vec.is_empty() {
-                String::new()
-            } else {
-                format!(" {}", tags_vec.join(" "))
-            };
+            // === Colored Tags Logic for Task List ===
+            // We need to calculate length first for padding
+            // Tags (Right aligned)
+            let tags_str_len: usize = t.categories.iter().map(|c| c.len() + 2).sum(); // +2 for " #"
 
             // Construction
-            // Left: Indent + Checkbox + Summary + Metadata
             let left_text = format!(
                 "{}{} {}{}{}{}",
                 indent, checkbox, t.summary, dur_str, due_str, recur_str
             );
 
-            // Right: Tags + Blocked Indicator
-            // [B] is right-most
-            let right_text = format!("{}{}", tags_str, if is_blocked { " [B]" } else { "" });
+            let blocked_len = if is_blocked { 4 } else { 0 }; // " [B]"
+            let total_len = left_text.chars().count() + tags_str_len + blocked_len;
 
-            // Calculate Padding to push Right Text to the edge
-            // We use simple char count as a proxy for width (assuming monospaced)
-            let left_width = left_text.chars().count();
-            let right_width = right_text.chars().count();
-
-            // Calculate spacing
-            let padding_len = list_inner_width.saturating_sub(left_width + right_width);
+            let padding_len = list_inner_width.saturating_sub(total_len);
             let padding = " ".repeat(padding_len);
 
-            // Build the spans
             let mut spans = vec![Span::styled(left_text, base_style), Span::raw(padding)];
 
-            // Append Tags (Cyan)
-            if !tags_vec.is_empty() {
-                spans.push(Span::styled(tags_str, Style::default().fg(Color::Cyan)));
+            // Append Tags with specific colors
+            for cat in &t.categories {
+                let (r, g, b) = color_utils::generate_color(cat);
+                let color = Color::Rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
+                spans.push(Span::styled(
+                    format!(" #{}", cat),
+                    Style::default().fg(color),
+                ));
             }
 
-            // Append Blocked Indicator (Red)
             if is_blocked {
                 spans.push(Span::styled(" [B]", Style::default().fg(Color::Red)));
             }
@@ -299,7 +302,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         })
         .collect();
 
-    // Main Title to show Offline/Unsynced status
+    // ... [Rest of view.rs remains the same] ...
     let mut title = if state.loading {
         " Tasks (Loading...) ".to_string()
     } else {
@@ -310,11 +313,9 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         title.push_str(" [UNSYNCED] ");
     }
 
-    // Main List Style
     let main_style = if state.active_focus == Focus::Main {
         Style::default().fg(Color::Yellow)
     } else if state.unsynced_changes {
-        // Visual hint for unsynced state in the border
         Style::default().fg(Color::LightRed)
     } else {
         Style::default()
@@ -331,23 +332,20 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
             Style::default()
                 .add_modifier(Modifier::BOLD)
                 .bg(Color::Green)
-                .fg(Color::Black), // Use Black text on Green background for high contrast
+                .fg(Color::Black),
         );
     f.render_stateful_widget(task_list, main_chunks[0], &mut state.list_state);
 
-    // 2. SHOW DEPENDENCIES IN DETAILS (Text only)
+    // Details
     let mut full_details = String::new();
 
     if let Some(task) = state.get_selected_task() {
-        // A. Description
         if !task.description.is_empty() {
             full_details.push_str(&task.description);
             full_details.push_str("\n\n");
         }
-
-        // B. Dependencies
         if !task.dependencies.is_empty() {
-            full_details.push_str("[Blocked By]:\n"); // <--- Text only
+            full_details.push_str("[Blocked By]:\n");
             for dep_uid in &task.dependencies {
                 let name = state
                     .store
@@ -369,7 +367,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         .block(Block::default().borders(Borders::ALL).title(" Details "));
     f.render_widget(details, main_chunks[1]);
 
-    // --- FOOTER (DYNAMIC) ---
+    // Footer
     let footer_area = v_chunks[1];
     f.render_widget(Clear, footer_area);
 
@@ -378,6 +376,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         | InputMode::Editing
         | InputMode::Searching
         | InputMode::EditingDescription => {
+            // ... [Input mode rendering] ...
             let (mut title_str, prefix, color) = match state.mode {
                 InputMode::Searching => (" Search ".to_string(), "/ ", Color::Green),
                 InputMode::Editing => (" Edit Title ".to_string(), "> ", Color::Magenta),
@@ -385,7 +384,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                     (" Edit Description ".to_string(), "📝 ", Color::Blue)
                 }
                 InputMode::Creating => {
-                    // If app_state.creating_child_of is Some, change title color or text
                     if state.creating_child_of.is_some() {
                         (" Create Child Task ".to_string(), "> ", Color::LightYellow)
                     } else {
@@ -395,7 +393,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                 _ => (" Create Task ".to_string(), "> ", Color::Yellow),
             };
 
-            // Smart Tag Hint - MERGED condition to satisfy clippy
             let show_tag_hint = (state.mode == InputMode::Searching
                 && state.input_buffer.starts_with('#'))
                 || (state.mode == InputMode::Creating
@@ -410,31 +407,18 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
             let input = Paragraph::new(input_text.clone())
                 .style(Style::default().fg(color))
                 .block(Block::default().borders(Borders::ALL).title(title_str))
-                // IMPORTANT: Disable wrapping for input to match our linear cursor logic
-                // OR implement complex 2D cursor logic.
-                // Disabling wrap is safer for now to prevent corruption.
                 .wrap(Wrap { trim: false });
 
             f.render_widget(input, footer_area);
 
-            // Simple cursor logic for single-line (Creating/Searching/Editing Title)
-            // For Description (Multiline), we need to calculate X/Y
+            // Cursor logic
             if state.mode == InputMode::EditingDescription {
                 let inner_width = (footer_area.width.saturating_sub(2)) as usize;
-
-                // Calculate cursor position considering newlines
-                // We must emulate how Paragraph renders it.
-                // Since we disabled wrapping above (to be safe), lines only break on \n
-
                 let combined = format!("{}{}", prefix, state.input_buffer);
                 let chars: Vec<char> = combined.chars().collect();
-
-                // Position of cursor in the combined string
                 let target_idx = prefix.chars().count() + state.cursor_position;
-
                 let mut x = 0;
                 let mut y = 0;
-
                 for (i, ch) in chars.iter().enumerate() {
                     if i == target_idx {
                         break;
@@ -444,29 +428,22 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                         x = 0;
                     } else {
                         x += 1;
-                        // Handle rudimentary wrapping if text exceeds width
-                        // (Though we disabled wrapping in widget, long lines might clip)
                         if x >= inner_width {
                             y += 1;
                             x = 0;
                         }
                     }
                 }
-
                 let screen_x = footer_area.x + 1 + x as u16;
                 let screen_y = footer_area.y + 1 + y as u16;
-
-                // Only set cursor if within bounds
                 if screen_y < footer_area.y + footer_area.height - 1 {
                     f.set_cursor_position((screen_x, screen_y));
                 }
             } else {
-                // Standard Single Line Logic
                 let cursor_x = footer_area.x
                     + 1
                     + prefix.chars().count() as u16
                     + state.cursor_position as u16;
-                // Clamp visual cursor to input box width to prevent drawing over border
                 let max_x = footer_area.x + footer_area.width - 2;
                 if cursor_x <= max_x {
                     let cursor_y = footer_area.y + 1;
@@ -474,38 +451,30 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                 }
             }
         }
-
         InputMode::Normal | InputMode::Moving | InputMode::Exporting => {
+            // ... [Status and Help bars] ...
             if state.show_full_help {
-                // --- FULL HELP VIEW ---
                 let h_chunks = Layout::default()
                     .direction(Direction::Horizontal)
                     .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
                     .split(footer_area);
-
-                // Render Full Help on Left
                 let block = Block::default()
                     .borders(Borders::ALL)
                     .title(" Keyboard Shortcuts (Press ? to minimize) ")
                     .border_style(Style::default().fg(Color::Cyan));
-
                 let p = Paragraph::new(full_help_text)
                     .block(block)
                     .wrap(Wrap { trim: false });
                 f.render_widget(p, h_chunks[0]);
-
-                // Render Status on Right
                 let status = Paragraph::new(state.message.clone())
                     .style(Style::default().fg(Color::Cyan))
                     .block(Block::default().borders(Borders::ALL).title(" Status "));
                 f.render_widget(status, h_chunks[1]);
             } else {
-                // --- COMPACT VIEW ---
                 let f_chunks = Layout::default()
                     .direction(Direction::Horizontal)
                     .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
                     .split(footer_area);
-
                 let status = Paragraph::new(state.message.clone())
                     .style(Style::default().fg(Color::Cyan))
                     .block(
@@ -513,8 +482,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                             .borders(Borders::LEFT | Borders::TOP | Borders::BOTTOM)
                             .title(" Status "),
                     );
-
-                // Condensed help
                 let help_str = match state.active_focus {
                     Focus::Sidebar => match state.sidebar_mode {
                         SidebarMode::Calendars => {
@@ -533,7 +500,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                             s.push_str(" y:Yank");
                         }
                         s.push_str(" C:NewChild");
-
                         if state.active_cal_href.as_deref() == Some(LOCAL_CALENDAR_HREF) {
                             s.push_str(" X:Export");
                         }
@@ -541,7 +507,6 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                         s
                     }
                 };
-
                 let help = Paragraph::new(help_str)
                     .style(Style::default().fg(Color::DarkGray))
                     .alignment(Alignment::Right)
@@ -555,15 +520,14 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
             }
         }
     }
+    // ... [Popups logic] ...
     if state.mode == InputMode::Moving {
         let area = centered_rect(60, 50, f.area());
-
         let items: Vec<ListItem> = state
             .move_targets
             .iter()
             .map(|c| ListItem::new(c.name.as_str()))
             .collect();
-
         let popup_list = List::new(items)
             .block(
                 Block::default()
@@ -576,10 +540,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                     .add_modifier(Modifier::BOLD)
                     .bg(Color::Blue),
             );
-
-        // First render a `Clear` widget to erase the area behind the popup
         f.render_widget(Clear, area);
-        // Then render the popup
         f.render_stateful_widget(popup_list, area, &mut state.move_selection_state);
     }
     if state.mode == InputMode::Exporting {
@@ -600,13 +561,11 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                     .add_modifier(Modifier::BOLD)
                     .bg(Color::Blue),
             );
-
         f.render_widget(Clear, area);
         f.render_stateful_widget(popup, area, &mut state.export_selection_state);
     }
 }
 
-/// Helper function to create a centered rect using up certain percentages of the available rect.
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -616,7 +575,6 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_y) / 2),
         ])
         .split(r);
-
     Layout::default()
         .direction(Direction::Horizontal)
         .constraints([

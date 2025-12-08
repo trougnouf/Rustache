@@ -1,10 +1,12 @@
 // File: src/gui/view/task_row.rs
+use crate::color_utils;
 use crate::gui::icon;
 use crate::gui::message::Message;
 use crate::gui::state::GuiApp;
 use crate::model::Task as TodoTask;
 
 use iced::widget::{Space, button, column, container, row, scrollable, text};
+pub use iced::widget::{rich_text, span};
 use iced::{Border, Color, Element, Length, Theme};
 
 pub fn view_task_row<'a>(
@@ -29,15 +31,10 @@ pub fn view_task_row<'a>(
     };
 
     let show_indent = app.active_cal_href.is_some() && app.search_value.is_empty();
-    // Further reduce per-depth indent so checkboxes start closer to the left
     let indent_size = if show_indent { task.depth * 12 } else { 0 };
     let indent = Space::new().width(Length::Fixed(indent_size as f32));
 
     // --- CUSTOM STYLES ---
-
-    // Style for standard actions (Edit, Move, Priority, etc.)
-    // Idle: Transparent with light text
-    // Hover: Dark background with white text
     let action_style = |theme: &Theme, status: button::Status| -> button::Style {
         let palette = theme.extended_palette();
         let base = button::Style {
@@ -74,9 +71,6 @@ pub fn view_task_row<'a>(
         }
     };
 
-    // Style for destructive actions (Delete, Cancel)
-    // Idle: Transparent with Red Icon
-    // Hover: Red Background with White Icon
     let danger_style = |theme: &Theme, status: button::Status| -> button::Style {
         let palette = theme.extended_palette();
         let base = button::Style {
@@ -113,10 +107,7 @@ pub fn view_task_row<'a>(
         }
     };
 
-    // 2. Title Row (Just Summary) - replaced later with direct text in-line to avoid wrapping issues
-
-    // Build tags_element on demand so we can reuse the construction in
-    // multiple layout branches without moving a value twice.
+    // --- Tag Builder ---
     let build_tags = || -> Element<'a, Message> {
         let mut tags_row: iced::widget::Row<'_, Message> = row![].spacing(3);
 
@@ -136,10 +127,18 @@ pub fn view_task_row<'a>(
         }
 
         for cat in &task.categories {
+            let (r, g, b) = color_utils::generate_color(cat);
+            let bg_color = Color::from_rgb(r, g, b);
+            let text_color = if color_utils::is_dark(r, g, b) {
+                Color::WHITE
+            } else {
+                Color::BLACK
+            };
+
             tags_row = tags_row.push(
-                container(text(format!("#{}", cat)).size(12).color(Color::BLACK))
-                    .style(|_| container::Style {
-                        background: Some(Color::from_rgb(0.6, 0.8, 1.0).into()),
+                container(text(format!("#{}", cat)).size(12).color(text_color))
+                    .style(move |_| container::Style {
+                        background: Some(bg_color.into()),
                         border: iced::Border {
                             radius: 4.0.into(),
                             ..Default::default()
@@ -186,7 +185,6 @@ pub fn view_task_row<'a>(
         tags_row.into()
     };
 
-    // Reserve a modest width for the date so the title has more room; reduce wasted gap after date
     let date_text: Element<'a, Message> = match task.due {
         Some(d) => container(
             text(d.format("%Y-%m-%d").to_string())
@@ -195,24 +193,15 @@ pub fn view_task_row<'a>(
         )
         .width(Length::Fixed(80.0))
         .into(),
-        // If no date is set, don't reserve space so tags/actions can use it
         None => Space::new().width(Length::Fixed(0.0)).into(),
     };
 
-    // 4. Info Button
     let has_desc = !task.description.is_empty();
     let has_deps = !task.dependencies.is_empty();
     let is_expanded = app.expanded_tasks.contains(&task.uid);
 
-    // Reserve a fixed slot for the info button so the date doesn't shift when details toggle.
-    // We'll insert either a real button (when content exists) or a transparent placeholder of the same width.
-
-    // 5. Actions
-    // Start empty; we'll push an info button only when there's something to show.
-    // Slightly tighter spacing between action buttons
     let mut actions = row![].spacing(3);
 
-    // Info button slot: real button when content exists, placeholder otherwise
     if has_desc || has_deps {
         let info_btn = button(icon::icon(icon::INFO).size(12))
             .style(if is_expanded {
@@ -225,7 +214,6 @@ pub fn view_task_row<'a>(
             .on_press(Message::ToggleDetails(task.uid.clone()));
         actions = actions.push(info_btn);
     } else {
-        // Invisible placeholder to hold layout space (same width as info button)
         actions = actions.push(Space::new().width(Length::Fixed(25.0)));
     }
 
@@ -266,11 +254,9 @@ pub fn view_task_row<'a>(
         );
     }
 
-    // Status Controls (action button on the right)
     if task.status != crate::model::TaskStatus::Completed
         && task.status != crate::model::TaskStatus::Cancelled
     {
-        // Use a codicon play (eb2c) for the action when starting, and PAUSE when stopping.
         let (action_icon, msg_status) = if task.status == crate::model::TaskStatus::InProcess {
             (icon::PAUSE, crate::model::TaskStatus::NeedsAction)
         } else {
@@ -303,9 +289,6 @@ pub fn view_task_row<'a>(
             .on_press(Message::EditTaskStart(index)),
     );
 
-    // --- REORDERED HERE: Delete first, then Cancel ---
-
-    // 1. Delete Button (Dangerously close prevention: Put it "inside")
     actions = actions.push(
         button(icon::icon(icon::TRASH).size(14))
             .style(danger_style)
@@ -313,7 +296,6 @@ pub fn view_task_row<'a>(
             .on_press(Message::DeleteTask(index)),
     );
 
-    // 2. Cancel Button (Safer on the edge)
     if task.status != crate::model::TaskStatus::Completed
         && task.status != crate::model::TaskStatus::Cancelled
     {
@@ -328,16 +310,9 @@ pub fn view_task_row<'a>(
         );
     }
 
-    // 6. Construct Main Row
-
-    // --- CUSTOM MULTI-STATE CHECKBOX ---
-    // We define the look (Icon + Background Color) based on status
     let (icon_char, bg_color, border_color) = match task.status {
-        // Show a play icon for ongoing tasks per user's preference (nf-cod-play)
         crate::model::TaskStatus::InProcess => (
-            // Use the FontAwesome play inside the status box (prettier in-box glyph)
             icon::PLAY_FA,
-            // Toned down / Muted Green
             Color::from_rgb(0.6, 0.8, 0.6),
             Color::from_rgb(0.4, 0.5, 0.4),
         ),
@@ -348,26 +323,20 @@ pub fn view_task_row<'a>(
         ),
         crate::model::TaskStatus::Completed => (
             icon::CHECK,
-            // The "Pretty" Bright Green
             Color::from_rgb(0.0, 0.6, 0.0),
             Color::from_rgb(0.0, 0.8, 0.0),
         ),
-        // NeedsAction: render an empty interior (no glyph) so we avoid a box-within-box
         crate::model::TaskStatus::NeedsAction => {
             (' ', Color::TRANSPARENT, Color::from_rgb(0.5, 0.5, 0.5))
         }
     };
 
-    // We use a Button fixed to 24x24 to act as a Checkbox
     let status_btn = button(
-        container(
-            // If icon_char is a space sentinel, render an empty Text so the colored box appears clean
-            if icon_char != ' ' {
-                icon::icon(icon_char).size(12).color(Color::WHITE)
-            } else {
-                text("").size(12).color(Color::WHITE)
-            },
-        )
+        container(if icon_char != ' ' {
+            icon::icon(icon_char).size(12).color(Color::WHITE)
+        } else {
+            text("").size(12).color(Color::WHITE)
+        })
         .width(Length::Fill)
         .height(Length::Fill)
         .align_x(iced::alignment::Horizontal::Center)
@@ -376,23 +345,21 @@ pub fn view_task_row<'a>(
     .width(Length::Fixed(24.0))
     .height(Length::Fixed(24.0))
     .padding(0)
-    .on_press(Message::ToggleTask(index, true)) // Logic handles the toggle
+    .on_press(Message::ToggleTask(index, true))
     .style(move |_theme, status| {
-        // Define how the "Box" looks
         let base_active = button::Style {
             background: Some(bg_color.into()),
             text_color: Color::WHITE,
             border: iced::Border {
                 color: border_color,
                 width: 1.0,
-                radius: 4.0.into(), // Rounded corners like a standard checkbox
+                radius: 4.0.into(),
             },
             ..button::Style::default()
         };
 
         match status {
             iced::widget::button::Status::Hovered => button::Style {
-                // Slight highlight on hover
                 border: iced::Border {
                     color: Color::WHITE,
                     width: 1.0,
@@ -403,12 +370,7 @@ pub fn view_task_row<'a>(
             _ => base_active,
         }
     });
-    // Build the title row (Fill) and a main text column (title + tags)
-    // Decide whether to place tags inline with the title or below it.
-    // We can't know pixel width here, so use a simple heuristic based on
-    // the title length and number of tags. If the combined estimated
-    // length is small, render tags inline; otherwise render tags on a
-    // separate right-aligned row below the title.
+
     let title_chars = task.summary.chars().count();
     let est_tags_len = task.categories.len() * 4
         + if task.estimated_duration.is_some() {
@@ -418,10 +380,7 @@ pub fn view_task_row<'a>(
         }
         + if task.rrule.is_some() { 1 } else { 0 }
         + if is_blocked { 9 } else { 0 };
-    // threshold tuned to typical widths; tweak as needed
     let place_inline = (title_chars + est_tags_len) <= 60;
-
-    // Helper boolean to check if we have ANY metadata to display (Tags, Duration, Recurrence, Blocked)
     let has_metadata = !task.categories.is_empty()
         || task.rrule.is_some()
         || is_blocked
@@ -433,7 +392,6 @@ pub fn view_task_row<'a>(
                 .size(20)
                 .color(color)
                 .width(Length::Fill),
-            // show tags inline to the right when small enough
             if has_metadata {
                 build_tags()
             } else {
@@ -455,7 +413,6 @@ pub fn view_task_row<'a>(
 
     let main_text_col = column![
         title_row,
-        // If we didn't place tags inline, show them on a separate right-aligned row
         if !place_inline && has_metadata {
             row![Space::new().width(Length::Fill), build_tags()]
         } else {
@@ -465,13 +422,10 @@ pub fn view_task_row<'a>(
     .width(Length::Fill)
     .spacing(1);
 
-    // Place date_text as its own column element so it doesn't shift when actions change.
-    // Tighten spacing so elements use space more efficiently
     let row_main = row![indent, status_btn, main_text_col, date_text, actions]
         .spacing(10)
         .align_y(iced::Alignment::Center);
 
-    // --- CHANGED HERE: Increased right padding from 6.0 to 16.0 ---
     let mut padded_row = container(row_main).padding(iced::Padding {
         top: 2.0,
         right: 16.0,
@@ -482,7 +436,6 @@ pub fn view_task_row<'a>(
     if is_selected {
         padded_row = padded_row.style(|theme: &Theme| {
             let palette = theme.extended_palette();
-            // Use warning color (typically yellow/orange) for a "happy" highlight
             container::Style {
                 background: Some(
                     Color {
@@ -504,13 +457,11 @@ pub fn view_task_row<'a>(
         });
     }
 
-    // GENERATE ID
     let row_id = iced::widget::Id::from(task.uid.clone());
 
     if is_expanded {
         let mut details_col = column![].spacing(5);
 
-        // 1. Description
         if !task.description.is_empty() {
             details_col = details_col.push(
                 text(&task.description)
@@ -519,7 +470,6 @@ pub fn view_task_row<'a>(
             );
         }
 
-        // 2. Parent (NEW: Show parent and allow detaching)
         if let Some(p_uid) = &task.parent_uid {
             let p_name = app
                 .store
@@ -529,7 +479,7 @@ pub fn view_task_row<'a>(
                 text("Parent:")
                     .size(12)
                     .color(Color::from_rgb(0.4, 0.8, 0.4)),
-                text(p_name).size(12), // Pass ownership (remove &)
+                text(p_name).size(12),
                 button(icon::icon(icon::CROSS).size(10))
                     .style(button::danger)
                     .padding(2)
@@ -540,7 +490,6 @@ pub fn view_task_row<'a>(
             details_col = details_col.push(row);
         }
 
-        // 3. Dependencies (Updated with remove button)
         if !task.dependencies.is_empty() {
             details_col = details_col.push(
                 text("[Blocked By]:")
@@ -571,11 +520,8 @@ pub fn view_task_row<'a>(
             }
         }
 
-        // Only show if we have multiple calendars
         if app.calendars.len() > 1 {
             let current_cal_href = task.calendar_href.clone();
-
-            // Build a list of target calendars (excluding the current one and hidden calendars)
             let targets: Vec<_> = app
                 .calendars
                 .iter()
@@ -586,7 +532,6 @@ pub fn view_task_row<'a>(
                 .size(12)
                 .color(Color::from_rgb(0.5, 0.5, 0.5));
 
-            // We use a Row of buttons for targets, but make it horizontally scrollable and constrained in height
             let mut move_row = row![].spacing(5).align_y(iced::Alignment::Center);
 
             for cal in targets {
