@@ -1,14 +1,16 @@
-// File: ./src/gui/update/settings.rs
+use crate::cache::Cache;
 use crate::config::Config;
 use crate::gui::async_ops::*;
 use crate::gui::message::Message;
 use crate::gui::state::{AppState, GuiApp};
-use crate::gui::update::common::save_config;
+use crate::gui::update::common::{refresh_filtered_tasks, save_config};
+use crate::storage::{LOCAL_CALENDAR_HREF, LOCAL_CALENDAR_NAME, LocalStorage};
 use iced::Task;
 
 pub fn handle(app: &mut GuiApp, message: Message) -> Task<Message> {
     match message {
         Message::ConfigLoaded(Ok(config)) => {
+            // 1. Load Config Fields (Keep existing logic)
             app.hidden_calendars = config.hidden_calendars.clone().into_iter().collect();
             app.disabled_calendars = config.disabled_calendars.clone().into_iter().collect();
             app.sort_cutoff_months = config.sort_cutoff_months;
@@ -17,13 +19,76 @@ pub fn handle(app: &mut GuiApp, message: Message) -> Task<Message> {
                 None => "".to_string(),
             };
             app.ob_insecure = config.allow_insecure_certs;
+            app.tag_aliases = config.tag_aliases.clone(); // Load aliases immediately
+            app.hide_completed = config.hide_completed;
+            app.hide_fully_completed_tags = config.hide_fully_completed_tags;
 
             app.ob_url = config.url.clone();
             app.ob_user = config.username.clone();
             app.ob_pass = config.password.clone();
             app.ob_default_cal = config.default_calendar.clone();
 
-            app.state = AppState::Loading;
+            // --- Optimistic Cache Loading ---
+            // 2. Load Calendars from Cache
+            let mut cached_cals = Cache::load_calendars().unwrap_or_default();
+
+            // Ensure Local Calendar exists
+            if !cached_cals.iter().any(|c| c.href == LOCAL_CALENDAR_HREF) {
+                cached_cals.push(crate::model::CalendarListEntry {
+                    name: LOCAL_CALENDAR_NAME.to_string(),
+                    href: LOCAL_CALENDAR_HREF.to_string(),
+                    color: None,
+                });
+            }
+            app.calendars = cached_cals;
+
+            // 3. Load Tasks from Cache
+            app.store.clear();
+
+            // Load Local Tasks
+            if let Ok(local_tasks) = LocalStorage::load() {
+                app.store
+                    .insert(LOCAL_CALENDAR_HREF.to_string(), local_tasks);
+            }
+
+            // Load Cached Remote Tasks
+            for cal in &app.calendars {
+                if cal.href == LOCAL_CALENDAR_HREF {
+                    continue;
+                }
+                if let Ok((tasks, _)) = Cache::load(&cal.href) {
+                    app.store.insert(cal.href.clone(), tasks);
+                }
+            }
+
+            // 4. Set Active Calendar
+            if let Some(def) = &app.ob_default_cal {
+                if app
+                    .calendars
+                    .iter()
+                    .any(|c| c.name == *def || c.href == *def)
+                {
+                    // Find the href if the user provided a name
+                    let href = app
+                        .calendars
+                        .iter()
+                        .find(|c| c.name == *def || c.href == *def)
+                        .map(|c| c.href.clone());
+                    app.active_cal_href = href;
+                }
+            }
+            if app.active_cal_href.is_none() {
+                app.active_cal_href = Some(LOCAL_CALENDAR_HREF.to_string());
+            }
+
+            // 5. Update View immediately
+            refresh_filtered_tasks(app);
+
+            // 6. Set State to Active (UI shows up instantly)
+            app.state = AppState::Active;
+
+            // 7. Trigger Network in Background (Loading spinner will spin)
+            app.loading = true; // Shows "Refreshing" in the header
             Task::perform(connect_and_fetch_wrapper(config), Message::Loaded)
         }
         Message::ConfigLoaded(Err(_)) => {
