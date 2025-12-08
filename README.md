@@ -3,7 +3,7 @@
 # Cfait
 > Take control of your TODO list
 
-**Cfait** is a powerful, simple, elegant, and lightweight CalDAV tasks manager, written in Rust.
+**Cfait** is a powerful, simple, elegant and fast CalDAV tasks manager, written in Rust.
 
 It features both an efficient **TUI (Terminal UI)** and a modern **GUI (Graphical UI)** for desktop integration.
 
