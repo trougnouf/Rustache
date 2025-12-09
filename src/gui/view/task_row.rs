@@ -4,19 +4,19 @@ use crate::gui::icon;
 use crate::gui::message::Message;
 use crate::gui::state::GuiApp;
 use crate::model::Task as TodoTask;
+use std::collections::HashSet;
 use std::time::Duration;
 
 use super::tooltip_style;
 use iced::widget::{Space, button, column, container, row, scrollable, text, tooltip};
 pub use iced::widget::{rich_text, span};
-use iced::{Border, Color, Element, Length, Theme}; // Import from super (mod.rs)
+use iced::{Border, Color, Element, Length, Theme};
 
 pub fn view_task_row<'a>(
     app: &'a GuiApp,
     index: usize,
     task: &'a TodoTask,
 ) -> Element<'a, Message> {
-    // ... [setup: No Change] ...
     let is_blocked = app.store.is_blocked(task);
     let is_selected = app.selected_uid.as_ref() == Some(&task.uid);
     let color = if is_blocked {
@@ -32,7 +32,6 @@ pub fn view_task_row<'a>(
     let indent_size = if show_indent { task.depth * 12 } else { 0 };
     let indent = Space::new().width(Length::Fixed(indent_size as f32));
 
-    // ... [Styles and Tag Builder: No Change] ...
     let action_style = |theme: &Theme, status: button::Status| -> button::Style {
         let palette = theme.extended_palette();
         let base = button::Style {
@@ -101,8 +100,11 @@ pub fn view_task_row<'a>(
             },
         }
     };
+
+    // --- Build Tags Logic ---
     let build_tags = || -> Element<'a, Message> {
         let mut tags_row: iced::widget::Row<'_, Message> = row![].spacing(3);
+
         if is_blocked {
             tags_row = tags_row.push(
                 container(text("[Blocked]").size(12).color(Color::WHITE))
@@ -117,7 +119,39 @@ pub fn view_task_row<'a>(
                     .padding(3),
             );
         }
+
+        // Parent Tag Filtering Logic
+        let parent_categories: HashSet<String> = if show_indent
+            && let Some(p_uid) = &task.parent_uid
+            && let Some((parent, _)) = app.store.clone().get_task_mut(p_uid)
+        // Cloning store is cheap (RefCell/Arc usually, but here HashMap clone might be heavy. Optimized: use direct lookup if possible, but store is not available as ref here easily without clone or passed ref. Actually `app` is passed ref. We can iterate `app.tasks` which is already sorted/filtered.)
+        {
+            // Getting parent from `app.tasks` is better if visible, but `organize_hierarchy` implies parent might be in list.
+            // However, `app.tasks` is the view list. If parent is collapsed/hidden, it might not be there.
+            // Using app.store directly is safer for data correctness.
+            // Note: `get_task_mut` requires mutable reference which we don't have on `app`.
+            // We need a read-only way. `app.store.calendars`...
+
+            // Re-implement read-only lookup since `get_task_mut` is the only public accessor helper currently.
+            let mut p_cats = HashSet::new();
+            if let Some(href) = app.store.index.get(p_uid) {
+                if let Some(list) = app.store.calendars.get(href) {
+                    if let Some(p) = list.iter().find(|t| t.uid == *p_uid) {
+                        p_cats = p.categories.iter().cloned().collect();
+                    }
+                }
+            }
+            p_cats
+        } else {
+            HashSet::new()
+        };
+
         for cat in &task.categories {
+            // Hide if parent has same tag and we are showing hierarchy
+            if show_indent && parent_categories.contains(cat) {
+                continue;
+            }
+
             let (r, g, b) = color_utils::generate_color(cat);
             let bg_color = Color::from_rgb(r, g, b);
             let text_color = if color_utils::is_dark(r, g, b) {
@@ -185,6 +219,7 @@ pub fn view_task_row<'a>(
         }
         tags_row.into()
     };
+
     let date_text: Element<'a, Message> = match task.due {
         Some(d) => container(
             text(d.format("%Y-%m-%d").to_string())
@@ -391,7 +426,6 @@ pub fn view_task_row<'a>(
         );
     }
 
-    // ... [Status Button, Rows, details expansion: No Change] ...
     let (icon_char, bg_color, border_color) = match task.status {
         crate::model::TaskStatus::InProcess => (
             icon::PLAY_FA,

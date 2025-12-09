@@ -20,8 +20,22 @@ pub fn handle(app: &mut GuiApp, message: Message) -> Task<Message> {
         }
         Message::StartCreateChild(parent_uid) => {
             app.creating_child_of = Some(parent_uid.clone());
-            app.selected_uid = Some(parent_uid);
-            app.input_value.clear();
+            app.selected_uid = Some(parent_uid.clone());
+
+            // Auto-fill tags from parent
+            let mut initial_input = String::new();
+            if let Some(parent_summary) = app.store.get_summary(&parent_uid) {
+                // Find the full task to get categories
+                if let Some((parent, _)) = app.store.get_task_mut(&parent_uid) {
+                    for cat in &parent.categories {
+                        initial_input.push_str(&format!("#{} ", cat));
+                    }
+                }
+            }
+
+            app.input_value = initial_input;
+
+            // Focus input (optional but good UX, implicit via state change in view)
             Task::none()
         }
         Message::SubmitTask => handle_submit(app),
@@ -102,6 +116,15 @@ pub fn handle(app: &mut GuiApp, message: Message) -> Task<Message> {
                     }
                 }
             }
+            Task::none()
+        }
+        // --- YANK / LINKING Handlers ---
+        Message::YankTask(uid) => {
+            app.yanked_uid = Some(uid);
+            Task::none()
+        }
+        Message::ClearYank => {
+            app.yanked_uid = None;
             Task::none()
         }
         Message::MakeChild(target_uid) => {
@@ -287,7 +310,7 @@ fn handle_submit(app: &mut GuiApp) -> Task<Message> {
         if !target_href.is_empty() {
             new_task.calendar_href = target_href.clone();
 
-            // Fix: Use add_task to maintain index
+            // Use add_task to maintain index
             app.store.add_task(new_task.clone());
 
             app.selected_uid = Some(new_task.uid.clone());

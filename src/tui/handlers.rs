@@ -1,6 +1,6 @@
 // File: src/tui/handlers.rs
 use crate::config::Config;
-use crate::model::{Task, TaskStatus, extract_inline_aliases};
+use crate::model::{CalendarListEntry, Task, TaskStatus, extract_inline_aliases};
 use crate::storage::LOCAL_CALENDAR_HREF;
 use crate::tui::action::{Action, AppEvent, SidebarMode};
 use crate::tui::state::{AppState, Focus, InputMode};
@@ -77,15 +77,10 @@ pub async fn handle_key_event(
 
                 // --- 2. Existing Logic with Clean Input ---
 
-                // If input looks like a tag jump (#tag) AND we didn't just define an alias
-                // (If we defined an alias like #a=#b, clean_input is #a. We shouldn't jump.)
                 if clean_input.starts_with('#')
                     && !clean_input.trim().contains(' ')
                     && state.creating_child_of.is_none()
                 {
-                    // Only jump if we didn't just perform a definition
-                    // (Checking via extract_inline_aliases check above is implicit,
-                    // but we need to know here. We can re-check clean vs raw or use flag)
                     let was_alias_def = state.input_buffer.contains('=');
 
                     if !was_alias_def {
@@ -100,8 +95,6 @@ pub async fn handle_key_event(
                             return None;
                         }
                     } else {
-                        // If it WAS an alias definition and clean_input is just "#tag",
-                        // we stop here. We defined the alias, we don't create a task named "#tag".
                         state.mode = InputMode::Normal;
                         state.reset_input();
                         state.message = "Alias updated.".to_string();
@@ -142,7 +135,6 @@ pub async fn handle_key_event(
         },
         InputMode::Editing => match key.code {
             KeyCode::Enter => {
-                // 1. Process Aliases First (Independent of Task Mut Borrow)
                 let (clean_input, new_aliases) = extract_inline_aliases(&state.input_buffer);
                 if !new_aliases.is_empty() {
                     for (k, v) in new_aliases {
@@ -158,7 +150,6 @@ pub async fn handle_key_event(
                     }
                 }
 
-                // 2. Process Task Update
                 let target_uid = state
                     .editing_index
                     .and_then(|idx| state.tasks.get(idx).map(|t| t.uid.clone()));
@@ -324,8 +315,17 @@ pub async fn handle_key_event(
                 {
                     let uid = task.uid.clone();
                     let summary = task.summary.clone();
+
+                    // --- Auto-fill tags from parent ---
+                    let mut initial_input = String::new();
+                    for cat in &task.categories {
+                        initial_input.push_str(&format!("#{} ", cat));
+                    }
+
+                    state.input_buffer = initial_input;
+                    state.cursor_position = state.input_buffer.len();
+
                     state.mode = InputMode::Creating;
-                    state.reset_input();
                     state.creating_child_of = Some(uid);
                     state.message = format!("New Child of '{}'...", summary);
                 }
