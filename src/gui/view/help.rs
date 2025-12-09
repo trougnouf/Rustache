@@ -12,7 +12,7 @@ const COL_CARD_BG: Color = Color::from_rgb(0.15, 0.15, 0.17); // Slightly lighte
 pub fn view_help() -> Element<'static, Message> {
     let title = row![
         crate::gui::icon::icon(crate::gui::icon::HELP_RHOMBUS).size(28).style(|_: &Theme| text::Style { color: Some(COL_ACCENT) }),
-        text("Syntax Guide").size(28).style(|_: &Theme| text::Style { color: Some(Color::WHITE) })
+        text("Syntax guide").size(28).style(|_: &Theme| text::Style { color: Some(Color::WHITE) })
     ]
     .spacing(15)
     .align_y(iced::Alignment::Center);
@@ -75,7 +75,7 @@ pub fn view_help() -> Element<'static, Message> {
         container(
             column![
                 button(
-                    text("Close Help")
+                    text("Close help")
                         .size(16)
                         .width(Length::Fill)
                         .align_x(iced::alignment::Horizontal::Center)

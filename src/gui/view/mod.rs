@@ -416,7 +416,7 @@ fn view_main_content(app: &GuiApp, show_logo: bool) -> Element<'_, Message> {
     left_section = left_section.push(
         tooltip(
             refresh_btn,
-            text("Force Sync").size(12),
+            text("Force sync").size(12),
             tooltip::Position::Bottom,
         )
         .style(tooltip_style)

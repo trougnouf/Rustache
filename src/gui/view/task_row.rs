@@ -216,7 +216,7 @@ pub fn view_task_row<'a>(
         actions = actions.push(
             tooltip(
                 info_btn,
-                text("Show Details").size(12),
+                text("Show details").size(12),
                 tooltip::Position::Top,
             )
             .style(tooltip_style)
@@ -235,7 +235,7 @@ pub fn view_task_row<'a>(
             actions = actions.push(
                 tooltip(
                     block_btn,
-                    text("Block (Depends On)").size(12),
+                    text("Block (depends on)").size(12),
                     tooltip::Position::Top,
                 )
                 .style(tooltip_style)
@@ -248,7 +248,7 @@ pub fn view_task_row<'a>(
             actions = actions.push(
                 tooltip(
                     child_btn,
-                    text("Make Child").size(12),
+                    text("Make child").size(12),
                     tooltip::Position::Top,
                 )
                 .style(tooltip_style)
@@ -271,7 +271,7 @@ pub fn view_task_row<'a>(
             actions = actions.push(
                 tooltip(
                     create_child_btn,
-                    text("Create Subtask").size(12),
+                    text("Create subtask").size(12),
                     tooltip::Position::Top,
                 )
                 .style(tooltip_style)
@@ -286,7 +286,7 @@ pub fn view_task_row<'a>(
         actions = actions.push(
             tooltip(
                 link_btn,
-                text("Yank (Copy ID)").size(12),
+                text("Yank (copy ID)").size(12),
                 tooltip::Position::Top,
             )
             .style(tooltip_style)
@@ -333,7 +333,7 @@ pub fn view_task_row<'a>(
     actions = actions.push(
         tooltip(
             plus_btn,
-            text("Increase Priority").size(12),
+            text("Increase priority").size(12),
             tooltip::Position::Top,
         )
         .style(tooltip_style)
@@ -347,7 +347,7 @@ pub fn view_task_row<'a>(
     actions = actions.push(
         tooltip(
             minus_btn,
-            text("Decrease Priority").size(12),
+            text("Decrease priority").size(12),
             tooltip::Position::Top,
         )
         .style(tooltip_style)
@@ -562,7 +562,7 @@ pub fn view_task_row<'a>(
                 text(p_name).size(12),
                 tooltip(
                     remove_parent_btn,
-                    text("Remove Parent").size(12),
+                    text("Remove parent").size(12),
                     tooltip::Position::Top
                 )
                 .style(tooltip_style)
@@ -596,7 +596,7 @@ pub fn view_task_row<'a>(
                         .color(Color::from_rgb(0.6, 0.6, 0.6)),
                     tooltip(
                         remove_dep_btn,
-                        text("Remove Dependency").size(12),
+                        text("Remove dependency").size(12),
                         tooltip::Position::Top
                     )
                     .style(tooltip_style)

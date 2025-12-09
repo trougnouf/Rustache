@@ -103,7 +103,7 @@ pub fn view_sidebar_calendars(app: &GuiApp) -> Element<'_, Message> {
                 // Apply tooltip_style
                 let focus_tooltip = tooltip(
                     focus_btn,
-                    text("Focus (Hide Others)").size(12),
+                    text("Focus (hide others)").size(12),
                     tooltip::Position::Left,
                 )
                 .style(tooltip_style)
@@ -176,7 +176,7 @@ pub fn view_sidebar_categories(app: &GuiApp) -> Element<'_, Message> {
     // Apply tooltip_style
     let clear_tooltip = tooltip(
         clear_btn,
-        text("Clear All Tags").size(12),
+        text("Clear all tags").size(12),
         tooltip::Position::Top,
     )
     .style(tooltip_style)
@@ -286,7 +286,7 @@ pub fn view_sidebar_categories(app: &GuiApp) -> Element<'_, Message> {
 
     let dur_filters = column![
         iced::widget::rule::horizontal(1),
-        text("Filter Duration")
+        text("Filter duration")
             .size(14)
             .color(Color::from_rgb(0.7, 0.7, 0.7)),
         row![

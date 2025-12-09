@@ -12,6 +12,7 @@ options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 replaces=('rustycal' 'rustache' 'fairouille')
+provides=('cfait-tui' 'cfait-gui')
 
 build() {
   cd "$pkgname-$pkgver"

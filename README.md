@@ -19,59 +19,59 @@ It features both an efficient **TUI (Terminal UI)** and a modern **GUI (Graphica
 
 ## Features
 
-*   **Dual Interface:** Run it in your terminal (`cfait`) or as a windowed app (`cfait-gui`).
-*   **Smart Input:** Add tasks naturally: `Buy cat food !1 @tomorrow ~15m` sets Priority, Due Date, and Duration automatically.
-*   **GTD Workflow:** Mark tasks as **In Process** (`>`), **Cancelled** (`x`), or **Done**.
-*   **Duration Estimation:** Estimate time (`~2h`) and filter tasks by duration (`~<30m`).
-*   **Syncs Everywhere:** Fully compatible with standard CalDAV servers (Radicale, Nextcloud, iCloud, etc.).
-*   **Tag Support:** Organize tasks across all calendars using tags (e.g., `#woodworking`, `#project_potato`).
-*   **Tag Aliases:** Define shortcuts (e.g., `#groceries`) that automatically expand into multiple tags (e.g., `#groceries`, `#shopping`, `#home`).
-*   **Dependencies:** Link tasks using RFC 9253 (Blocked By) logic.
-*   **Hierarchy Support:** Create sub-tasks directly from parents and organize nested lists easily.
-*   **Multiple Calendars:** Seamlessly switch between "Work", "Personal", and other lists, or move tasks between them.
-*   **Offline & Local First:** Optimistic UI updates mean you never wait for the server. Possibility to use the app immediately without a server; a persistent "Local" calendar stores its tasks on disk.
-*   **Easy Migration:** When ready, export all tasks from the Local calendar to a CalDAV server with a single click (or keypress).
-*   **Sane sorting:** Tasks are sorted by due date, then undated tasks are ordered by priority.
+*   **Dual interface:** run it in your terminal (`cfait`) or as a windowed app (`cfait-gui`).
+*   **Smart input:** add tasks naturally: `Buy cat food !1 @tomorrow ~15m` sets priority, due date, and duration automatically.
+*   **GTD workflow:** mark tasks as **in process** (`>`), **cancelled** (`x`), or **done**.
+*   **Duration estimation:** estimate time (`~2h`) and filter tasks by duration (`~<30m`).
+*   **Syncs everywhere:** fully compatible with standard CalDAV servers (Radicale, Nextcloud, iCloud, etc.).
+*   **Tag support:** organize tasks across all calendars using tags (e.g., `#woodworking`, `#project_potato`).
+*   **Tag aliases:** define shortcuts (e.g., `#groceries`) that automatically expand into multiple tags (e.g., `#groceries`, `#shopping`, `#home`).
+*   **Dependencies:** link tasks using RFC 9253 (blocked by) logic.
+*   **Hierarchy support:** create sub-tasks directly from parents and organize nested lists easily.
+*   **Multiple calendars:** seamlessly switch between "Work", "Personal", and other lists, or move tasks between them.
+*   **Offline & local first:** optimistic UI updates mean you never wait for the server. Possibility to use the app immediately without a server; a persistent "Local" calendar stores its tasks on disk.
+*   **Easy migration:** when ready, export all tasks from the Local calendar to a CalDAV server with a single click (or keypress).
+*   **Sane sorting:** tasks are sorted by due date, then undated tasks are ordered by priority.
 
 
 ## Installation
 
-### A. Pre-built Packages
+### A. Pre-built packages
 
 Binaries are built on different environments to ensure maximum compatibility.
-*   **Codeberg Releases** (Recommended)**:** Built on Arch Linux. Includes native Arch packages, cross-compiled Windows binaries, and Linux binaries.
-*   **GitHub Releases:** Built on Ubuntu 24.04 and Windows.
+*   **Codeberg releases** (recommended):** built on Arch Linux. Includes native Arch packages, cross-compiled Windows binaries, and Linux binaries.
+*   **GitHub releases:** built on Ubuntu 24.04 and Windows.
 
 If a binary from one source doesn't work for you, try the other.
 
 *   **Arch Linux:**
-    *   Option 1 (AUR): Build from source using your favorite helper:
+    *   Option 1 (AUR): build from source using your favorite helper:
         ```bash
         yay -S cfait      # Stable release
         # or
         yay -S cfait-git  # Latest git version
         ```
-    *   Option 2 (Pre-built): Download the native `.pkg.tar.zst` from the [**Codeberg Releases**](https://codeberg.org/trougnouf/cfait/releases) and install it:
+    *   Option 2 (Pre-built): download the native `.pkg.tar.zst` from the [**Codeberg releases**](https://codeberg.org/trougnouf/cfait/releases) and install it:
         ```bash
         sudo pacman -U cfait-*.pkg.tar.zst
         ```
 
 *   **Debian-based Linux (including Ubuntu, Mint, ...):**
-    *   Download the `.deb` file from [**Codeberg**](https://codeberg.org/trougnouf/cfait/releases) (Built on Arch) or (if you encounter library errors, e.g. `glibc`) from [**GitHub**](https://github.com/trougnouf/cfait/releases) (Built on Ubuntu 24.04).
+    *   Download the `.deb` file from [**Codeberg**](https://codeberg.org/trougnouf/cfait/releases) (built on Arch) or (if you encounter library errors, e.g. `glibc`) from [**GitHub**](https://github.com/trougnouf/cfait/releases) (built on Ubuntu 24.04).
     *   Install:
         ```bash
         sudo dpkg -i cfait_*.deb
         ```
 
 *   **Windows:**
-    *   Download the `.zip` archive from [**Codeberg**](https://codeberg.org/trougnouf/cfait/releases) (Cross-compiled via MinGW) or [**GitHub**](https://github.com/trougnouf/cfait/releases) (Native build).
+    *   Download the `.zip` archive from [**Codeberg**](https://codeberg.org/trougnouf/cfait/releases) (cross-compiled via MinGW) or [**GitHub**](https://github.com/trougnouf/cfait/releases) (native build).
     *   Extract it and run `cfait.exe` (TUI) or `cfait-gui.exe` (GUI).
 
 *   **Other Linux:**
     *   Download the generic `cfait-linux-*.tar.gz` archive from either release page.
     *   Extract and place the binaries in your `$PATH`.
 
-### B. From Crates.io (via Cargo)
+### B. From crates.io (via Cargo)
 
 If you have Rust installed, you can install Cfait directly from crates.io.
 
@@ -158,52 +158,52 @@ cfait = ["dev", "rust"]           # Typing #cfait will add #cfait, #dev and #rus
 | :--- | :--- | :--- |
 | **Global** | `Tab` | Switch focus (Tasks ↔ Sidebar) |
 | | `q` | Quit |
-**Sidebar (Cals)** | `Enter` | **Set Target** (Add to view) |
-| | `Right` | **Focus** (Set Target + Hide others) |
-  | | `Space` | **Toggle Visibility** (Show/Hide layer) |
-| | `*` | **Toggle All** (Show all / Hide others) |
-| **Sidebar (Tags)** | `Enter` | Toggle Tag Filter |
-| | `m` | Toggle Tag Match Mode (AND / OR) |
-| | `*` | **Clear All Tags** (Show all tasks) |
-| **Task List** | `j` / `k` | Move Down / Up |
-| | `Space` | **Toggle** Completion |
-| | `s` | **Start / Pause** (Mark In-Process) |
-| | `x` | **Cancel** Task |
-| | `a` | **Add** Task (Type name, press Enter) |
-| | `C` | **Create Child** (Create new task linked as child of current, Shift+c) |
-| | `e` | **Edit** Task Title |
-| | `E` | **Edit** Task Description (Shift+e) |
-| | `d` | **Delete** Task |
-| | `M` | **Move** Task to another calendar (Shift+m) |
+**Sidebar (Cals)** | `Enter` | **Set target** (Add to view) |
+| | `Right` | **Focus** (Set target + Hide others) |
+  | | `Space` | **Toggle visibility** (Show/Hide layer) |
+| | `*` | **Toggle all** (Show all / Hide others) |
+| **Sidebar (Tags)** | `Enter` | Toggle tag filter |
+| | `m` | Toggle tag match mode (AND / OR) |
+| | `*` | **Clear all tags** (Show all tasks) |
+| **Task List** | `j` / `k` | Move down / up |
+| | `Space` | **Toggle** completion |
+| | `s` | **Start / Pause** (Mark in-process) |
+| | `x` | **Cancel** task |
+| | `a` | **Add** task (Type name, press Enter) |
+| | `C` | **Create child** (Create new task linked as child of current, Shift+c) |
+| | `e` | **Edit** task title |
+| | `E` | **Edit** task description (Shift+e) |
+| | `d` | **Delete** task |
+| | `M` | **Move** task to another calendar (Shift+m) |
 | | `y` | **Yank** (Copy ID for linking) |
 | | `b` | **Block** (Mark current task as blocked by Yanked task) |
 | | `c` | **Child** (Mark current task as child of Yanked task) |
 | | `r` | **Refresh** (Force sync) |
 | | `X` | **Export** (Migrate all tasks from Local to remote, Shift+x) |
-| | `H` | Toggle **Hide Completed** tasks |
-| | `/` | **Search** / Filter Tasks |
-| | `+` / `-` | Increase / Decrease **Priority** |
-| | `>` / `<` | **Indent** / **Outdent** (Visual Sub-tasks depth) |
-| **Sidebar** | `Enter` | Select Calendar / Toggle Tag |
-| | `1` | Switch to **Calendars** View |
-| | `2` | Switch to **Tags** View |
-| | `m` | Toggle Tag Match Mode (AND / OR) |
+| | `H` | Toggle **hide completed** tasks |
+| | `/` | **Search** / Filter tasks |
+| | `+` / `-` | Increase / Decrease **priority** |
+| | `>` / `<` | **Indent** / **Outdent** (Visual sub-tasks depth) |
+| **Sidebar** | `Enter` | Select calendar / Toggle tag |
+| | `1` | Switch to **Calendars** view |
+| | `2` | Switch to **Tags** view |
+| | `m` | Toggle tag match mode (AND / OR) |
 
 ## Input Syntax
 When adding (`a`) or editing (`e`) a task, you can use shortcuts directly in the text:
 
-*   `!1` to `!9`: Sets **Priority** (1 is High, 9 is Low).
-*   `due:DATE` or `@DATE`: Sets **Due Date**.
+*   `!1` to `!9`: Sets **priority** (1 is high, 9 is low).
+*   `due:DATE` or `@DATE`: Sets **due date**.
     *   Formats: `2025-12-31`, `today`, `tomorrow`, `1w` (1 week), `2d` (2 days).
-*   `start:DATE` or `^DATE`: Sets **Start Date**.
+*   `start:DATE` or `^DATE`: Sets **start date**.
     *   Tasks with a future start date are pushed to the bottom of the list ("Scheduled").
-*   `est:DURATION` or `~DURATION`: Sets **Estimated Duration** (e.g., `~30m`, `~1h`).
+*   `est:DURATION` or `~DURATION`: Sets **estimated duration** (e.g., `~30m`, `~1h`).
     *   Also supports `~30min`.
-*   `rec:RECURRENCE`: Sets **Recurrence** (e.g., `rec:weekly`, `rec:daily`).
+*   `rec:RECURRENCE`: Sets **recurrence** (e.g., `rec:weekly`, `rec:daily`).
     *   Also supports interval syntax: `rec:every 2 weeks`.
-*   `#tag`: Adds a **Tag** / Category.
+*   `#tag`: Adds a **tag** / category.
     *   **Aliases:** If you have configured aliases (e.g., `groceries = ["home"]`), typing `#groceries` will automatically apply `#groceries` AND `#home`.
-    *   **Quick Jump:** Typing only a tag (e.g., `#urgent`) and pressing Enter will switch the view to that tag.
+    *   **Quick jump:** Typing only a tag (e.g., `#urgent`) and pressing Enter will switch the view to that tag.
 
 ## Advanced Search
 The search bar (in both GUI and TUI) supports powerful filtering syntax:
@@ -225,9 +225,9 @@ The search bar (in both GUI and TUI) supports powerful filtering syntax:
 
 ## Sorting
 Tasks are sorted by:
-1.  **Status**: In Process > Needs Action > Completed.
-2.  **Scheduling**: Tasks with a **Start Date** in the future are pushed to the bottom.
-3.  **Due Date**: Overdue and upcoming tasks appear first.
+1.  **Status**: In process > Needs action > Completed.
+2.  **Scheduling**: Tasks with a **start date** in the future are pushed to the bottom.
+3.  **Due date**: Overdue and upcoming tasks appear first.
 4.  **Priority**: Higher priority (`!1`) first.
 
 ## License
@@ -238,13 +238,13 @@ GPL3
 Commits are pushed to the following repositories. The automated build pipelines differ slightly:
 
 *   **[Codeberg](https://codeberg.org/trougnouf/cfait)**
-    *   **CI:** Runs lint and tests on every commit.
-    *   **Environment:** Builds run on **Arch Linux**.
-    *   **Artifacts:** Native Arch package (`.pkg.tar.zst`), Cross-compiled Windows build (MinGW), Cross-packaged Debian build, PKGBUILD.
-    *   **Deployment:** Automatically pushes updates to the [AUR](https://aur.archlinux.org/packages/cfait).
+    *   **CI:** runs lint and tests on every commit.
+    *   **Environment:** builds run on **Arch Linux**.
+    *   **Artifacts:** native Arch package (`.pkg.tar.zst`), cross-compiled Windows build (MinGW), cross-packaged Debian build, PKGBUILD.
+    *   **Deployment:** automatically pushes updates to the [AUR](https://aur.archlinux.org/packages/cfait).
 
 *   **[GitHub](https://github.com/trougnouf/cfait)**
-    *   **CI:** Runs tests on release.
-    *   **Environment:** Builds run on **Ubuntu 24.04** and **Windows Server**.
-    *   **Artifacts:** Native Debian/Ubuntu package, Native Windows build, PKGBUILD.
+    *   **CI:** runs tests on release.
+    *   **Environment:** builds run on **Ubuntu 24.04** and **Windows Server**.
+    *   **Artifacts:** native Debian/Ubuntu package, native Windows build, PKGBUILD.
 *   **[GitLab](https://gitlab.com/trougnouf/cfait)**

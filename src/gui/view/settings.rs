@@ -22,7 +22,7 @@ pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
     let cal_names: Vec<String> = app.calendars.iter().map(|c| c.name.clone()).collect();
     let picker: Element<_> = if !cal_names.is_empty() && is_settings {
         column![
-            text("Default Calendar:"),
+            text("Default calendar:"),
             iced::widget::pick_list(
                 cal_names,
                 app.ob_default_cal.clone(),
@@ -65,8 +65,8 @@ pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
 
     let sorting_ui: Element<_> = if is_settings {
         column![
-            text("Sorting Priority Cutoff (Months):"),
-            text("(Tasks due within this range are shown first. Blank = All timed first)")
+            text("Sorting priority cutoff (months):"),
+            text("(Tasks due within this range are shown first. Blank = all timed first)")
                 .size(12)
                 .color(Color::from_rgb(0.6, 0.6, 0.6)),
             text_input("6", &app.ob_sort_months_input)
@@ -82,7 +82,7 @@ pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
 
     // Alias Section
     let aliases_ui: Element<_> = if is_settings {
-        let mut list_col = column![text("Tag Aliases").size(20)].spacing(10);
+        let mut list_col = column![text("Tag aliases").size(20)].spacing(10);
 
         // Existing Aliases List
         for (key, vals) in &app.tag_aliases {
@@ -133,7 +133,7 @@ pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
     };
 
     let cal_mgmt_ui: Element<_> = if is_settings && !app.calendars.is_empty() {
-        let mut col = column![text("Manage Calendars").size(20)].spacing(10);
+        let mut col = column![text("Manage calendars").size(20)].spacing(10);
 
         for cal in &app.calendars {
             // Logic inverted: Checkbox checked = Enabled (!Disabled)
@@ -171,7 +171,7 @@ pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
     if !is_settings {
         // Onboarding screen
         buttons = buttons.push(
-            button("Use Offline Mode")
+            button("Use offline mode")
                 .padding(10)
                 .style(button::secondary)
                 .on_press(Message::ObSubmitOffline),
@@ -205,7 +205,7 @@ pub fn view_settings(app: &GuiApp) -> Element<'_, Message> {
         .text_size(14);
 
     let form = column![
-        text("CalDAV Server URL:"),
+        text("CalDAV server URL:"),
         text_input("https://...", &app.ob_url)
             .on_input(Message::ObUrlChanged)
             .padding(10),

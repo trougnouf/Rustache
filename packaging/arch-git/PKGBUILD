@@ -15,6 +15,7 @@ source=("$_pkgname::git+$url.git")
 sha256sums=('SKIP')
 replaces=('rustycal' 'rustache' 'fairouille')
 options=('!lto')
+provides=('cfait-tui' 'cfait-gui')
 
 pkgver() {
   cd "$_pkgname"
