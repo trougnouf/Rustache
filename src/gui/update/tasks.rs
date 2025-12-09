@@ -2,8 +2,8 @@
 use crate::gui::async_ops::*;
 use crate::gui::message::Message;
 use crate::gui::state::{GuiApp, SidebarMode};
-use crate::gui::update::common::refresh_filtered_tasks;
-use crate::model::Task as TodoTask;
+use crate::gui::update::common::{apply_alias_retroactively, refresh_filtered_tasks, save_config};
+use crate::model::{Task as TodoTask, extract_inline_aliases};
 use iced::Task;
 use iced::widget::operation;
 use iced::widget::scrollable::RelativeOffset;
@@ -199,24 +199,60 @@ fn handle_submit(app: &mut GuiApp) -> Task<Message> {
         return Task::none();
     }
 
-    if app.input_value.starts_with('#')
-        && !app.input_value.trim().contains(' ')
+    // --- Parse inline alias definitions (#key=tag1,tag2) ---
+    let (clean_input, new_aliases) = extract_inline_aliases(&app.input_value);
+
+    let mut retroactive_sync_batch = Vec::new();
+
+    if !new_aliases.is_empty() {
+        // Register new aliases
+        for (key, tags) in new_aliases {
+            app.tag_aliases.insert(key.clone(), tags.clone());
+
+            // Queue retroactive application
+            if let Some(task_cmd) = apply_alias_retroactively(app, &key, &tags) {
+                retroactive_sync_batch.push(task_cmd);
+            }
+        }
+        save_config(app);
+    }
+
+    if clean_input.starts_with('#')
+        && !clean_input.trim().contains(' ')
         && app.editing_uid.is_none()
     {
-        let tag = app.input_value.trim().trim_start_matches('#').to_string();
-        if !tag.is_empty() {
-            app.sidebar_mode = SidebarMode::Categories;
-            app.selected_categories.clear();
-            app.selected_categories.insert(tag);
+        // If we just parsed aliases (e.g. #a=#b), clean_input might be "#a".
+        // In that case, we treat it as a definition, not a jump request.
+        let was_alias_definition = app.input_value.contains('=');
+
+        if !was_alias_definition {
+            let tag = clean_input.trim().trim_start_matches('#').to_string();
+            if !tag.is_empty() {
+                app.sidebar_mode = SidebarMode::Categories;
+                app.selected_categories.clear();
+                app.selected_categories.insert(tag);
+                app.input_value.clear();
+                refresh_filtered_tasks(app);
+
+                if !retroactive_sync_batch.is_empty() {
+                    return Task::batch(retroactive_sync_batch);
+                }
+                return Task::none();
+            }
+        } else {
+            // It was a definition. Just clear input and run pending syncs.
             app.input_value.clear();
             refresh_filtered_tasks(app);
+            if !retroactive_sync_batch.is_empty() {
+                return Task::batch(retroactive_sync_batch);
+            }
             return Task::none();
         }
     }
 
     if let Some(edit_uid) = &app.editing_uid {
         if let Some((task, _)) = app.store.get_task_mut(edit_uid) {
-            task.apply_smart_input(&app.input_value, &app.tag_aliases);
+            task.apply_smart_input(&clean_input, &app.tag_aliases);
             task.description = app.description_value.text();
             let task_copy = task.clone();
 
@@ -227,14 +263,16 @@ fn handle_submit(app: &mut GuiApp) -> Task<Message> {
 
             refresh_filtered_tasks(app);
             if let Some(client) = &app.client {
-                return Task::perform(
+                let save_cmd = Task::perform(
                     async_update_wrapper(client.clone(), task_copy),
                     Message::SyncSaved,
                 );
+                retroactive_sync_batch.push(save_cmd);
+                return Task::batch(retroactive_sync_batch);
             }
         }
-    } else {
-        let mut new_task = TodoTask::new(&app.input_value, &app.tag_aliases);
+    } else if !clean_input.is_empty() {
+        let mut new_task = TodoTask::new(&clean_input, &app.tag_aliases);
         if let Some(parent) = &app.creating_child_of {
             new_task.parent_uid = Some(parent.clone());
             app.creating_child_of = None;
@@ -271,15 +309,21 @@ fn handle_submit(app: &mut GuiApp) -> Task<Message> {
             );
 
             if let Some(client) = &app.client {
-                return Task::batch(vec![
-                    Task::perform(
-                        async_create_wrapper(client.clone(), new_task),
-                        Message::SyncSaved,
-                    ),
-                    scroll_cmd,
-                ]);
+                let create_cmd = Task::perform(
+                    async_create_wrapper(client.clone(), new_task),
+                    Message::SyncSaved,
+                );
+
+                retroactive_sync_batch.push(create_cmd);
+                retroactive_sync_batch.push(scroll_cmd);
+
+                return Task::batch(retroactive_sync_batch);
             }
         }
+    }
+
+    if !retroactive_sync_batch.is_empty() {
+        return Task::batch(retroactive_sync_batch);
     }
     Task::none()
 }

@@ -1,4 +1,4 @@
-// File: ./src/model/parser.rs
+// File: src/model/parser.rs
 // Handles smart text input parsing
 use crate::model::item::Task;
 use chrono::{DateTime, Local, NaiveDate, Utc};
@@ -33,11 +33,12 @@ impl Task {
 
             // 2. Duration (est:30m, ~30m)
             if let Some(val) = word.strip_prefix("est:").or_else(|| word.strip_prefix('~'))
-                && let Some(m) = parse_duration(val) {
-                    self.estimated_duration = Some(m);
-                    i += 1;
-                    continue;
-                }
+                && let Some(m) = parse_duration(val)
+            {
+                self.estimated_duration = Some(m);
+                i += 1;
+                continue;
+            }
 
             // 3. Tags (#tag)
             if let Some(stripped) = word.strip_prefix('#') {
@@ -61,12 +62,13 @@ impl Task {
 
             // 4. Recurrence (rec:weekly, @weekly)
             if let Some(val) = word.strip_prefix("rec:").or_else(|| word.strip_prefix('@'))
-                && let Some(rrule) = parse_recurrence(val) {
-                    self.rrule = Some(rrule);
-                    i += 1;
-                    continue;
-                }
-                // If not a recurrence keyword, it might be a date using '@' synonym, allow fallthrough
+                && let Some(rrule) = parse_recurrence(val)
+            {
+                self.rrule = Some(rrule);
+                i += 1;
+                continue;
+            }
+            // If not a recurrence keyword, it might be a date using '@' synonym, allow fallthrough
 
             // 5. Explicit Recurrence with interval (rec:every 2 days)
             // Or synonym (@every 2 days)
@@ -85,23 +87,25 @@ impl Task {
 
             // 6. Due Date (due:2025-01-01, @2025-01-01)
             if let Some(val) = word.strip_prefix("due:").or_else(|| word.strip_prefix('@'))
-                && let Some(dt) = parse_smart_date(val, true) {
-                    // true = end of day
-                    self.due = Some(dt);
-                    i += 1;
-                    continue;
-                }
+                && let Some(dt) = parse_smart_date(val, true)
+            {
+                // true = end of day
+                self.due = Some(dt);
+                i += 1;
+                continue;
+            }
 
             // 7. Start Date (start:2025-01-01, ^2025-01-01)
             if let Some(val) = word
                 .strip_prefix("start:")
                 .or_else(|| word.strip_prefix('^'))
-                && let Some(dt) = parse_smart_date(val, false) {
-                    // false = start of day
-                    self.dtstart = Some(dt);
-                    i += 1;
-                    continue;
-                }
+                && let Some(dt) = parse_smart_date(val, false)
+            {
+                // false = start of day
+                self.dtstart = Some(dt);
+                i += 1;
+                continue;
+            }
 
             // Fallback: Add to summary
             summary_words.push(word);
@@ -169,6 +173,42 @@ impl Task {
         }
         s
     }
+}
+
+/// Helper to extract inline alias definitions from an input string.
+/// Syntax: #alias=#tag1,#tag2
+/// Returns:
+/// 1. The cleaned input string (with definitions replaced by just the alias tag: #alias)
+/// 2. A HashMap of the extracted definitions.
+pub fn extract_inline_aliases(input: &str) -> (String, HashMap<String, Vec<String>>) {
+    let mut cleaned_words = Vec::new();
+    let mut new_aliases = HashMap::new();
+
+    for token in input.split_whitespace() {
+        if token.starts_with('#')
+            && token.contains('=')
+            && let Some((left, right)) = token.split_once('=')
+        {
+            let alias_key = left.trim_start_matches('#').to_string();
+            if !alias_key.is_empty() && !right.is_empty() {
+                let tags: Vec<String> = right
+                    .split(',')
+                    .map(|t| t.trim().trim_start_matches('#').to_string())
+                    .filter(|t| !t.is_empty())
+                    .collect();
+
+                if !tags.is_empty() {
+                    new_aliases.insert(alias_key.clone(), tags);
+                    // Replace the definition with just the alias tag in the output string
+                    cleaned_words.push(left.to_string());
+                    continue;
+                }
+            }
+        }
+        cleaned_words.push(token.to_string());
+    }
+
+    (cleaned_words.join(" "), new_aliases)
 }
 
 // --- Helpers ---

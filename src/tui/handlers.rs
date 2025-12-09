@@ -1,5 +1,6 @@
 // File: src/tui/handlers.rs
-use crate::model::{Task, TaskStatus};
+use crate::config::Config;
+use crate::model::{Task, TaskStatus, extract_inline_aliases};
 use crate::storage::LOCAL_CALENDAR_HREF;
 use crate::tui::action::{Action, AppEvent, SidebarMode};
 use crate::tui::state::{AppState, Focus, InputMode};
@@ -44,8 +45,6 @@ pub fn handle_app_event(state: &mut AppState, event: AppEvent, default_cal: &Opt
     }
 }
 
-// ... rest of the file is unchanged ...
-
 pub async fn handle_key_event(
     key: KeyEvent,
     state: &mut AppState,
@@ -54,22 +53,58 @@ pub async fn handle_key_event(
     match state.mode {
         InputMode::Creating => match key.code {
             KeyCode::Enter if !state.input_buffer.is_empty() => {
-                if state.input_buffer.starts_with('#')
-                    && !state.input_buffer.trim().contains(' ')
+                // --- 1. Extract Inline Aliases ---
+                let (clean_input, new_aliases) = extract_inline_aliases(&state.input_buffer);
+
+                if !new_aliases.is_empty() {
+                    for (key, tags) in new_aliases {
+                        state.tag_aliases.insert(key.clone(), tags.clone());
+
+                        // Shared Logic: Retroactive Update
+                        let modified = state.store.apply_alias_retroactively(&key, &tags);
+
+                        // Dispatch Updates
+                        for t in modified {
+                            let _ = action_tx.send(Action::UpdateTask(t)).await;
+                        }
+                    }
+                    // Persist Aliases
+                    if let Ok(mut cfg) = Config::load() {
+                        cfg.tag_aliases = state.tag_aliases.clone();
+                        let _ = cfg.save();
+                    }
+                }
+
+                // --- 2. Existing Logic with Clean Input ---
+
+                // If input looks like a tag jump (#tag) AND we didn't just define an alias
+                // (If we defined an alias like #a=#b, clean_input is #a. We shouldn't jump.)
+                if clean_input.starts_with('#')
+                    && !clean_input.trim().contains(' ')
                     && state.creating_child_of.is_none()
                 {
-                    let tag = state
-                        .input_buffer
-                        .trim()
-                        .trim_start_matches('#')
-                        .to_string();
-                    if !tag.is_empty() {
-                        state.sidebar_mode = SidebarMode::Categories;
-                        state.selected_categories.clear();
-                        state.selected_categories.insert(tag);
+                    // Only jump if we didn't just perform a definition
+                    // (Checking via extract_inline_aliases check above is implicit,
+                    // but we need to know here. We can re-check clean vs raw or use flag)
+                    let was_alias_def = state.input_buffer.contains('=');
+
+                    if !was_alias_def {
+                        let tag = clean_input.trim().trim_start_matches('#').to_string();
+                        if !tag.is_empty() {
+                            state.sidebar_mode = SidebarMode::Categories;
+                            state.selected_categories.clear();
+                            state.selected_categories.insert(tag);
+                            state.mode = InputMode::Normal;
+                            state.reset_input();
+                            state.refresh_filtered_view();
+                            return None;
+                        }
+                    } else {
+                        // If it WAS an alias definition and clean_input is just "#tag",
+                        // we stop here. We defined the alias, we don't create a task named "#tag".
                         state.mode = InputMode::Normal;
                         state.reset_input();
-                        state.refresh_filtered_view();
+                        state.message = "Alias updated.".to_string();
                         return None;
                     }
                 }
@@ -80,7 +115,7 @@ pub async fn handle_key_event(
                     .or_else(|| state.calendars.first().map(|c| c.href.clone()));
 
                 if let Some(href) = target_href {
-                    let mut task = Task::new(&state.input_buffer, &state.tag_aliases);
+                    let mut task = Task::new(&clean_input, &state.tag_aliases);
                     task.calendar_href = href.clone();
                     task.parent_uid = state.creating_child_of.clone();
 
@@ -107,6 +142,23 @@ pub async fn handle_key_event(
         },
         InputMode::Editing => match key.code {
             KeyCode::Enter => {
+                // 1. Process Aliases First (Independent of Task Mut Borrow)
+                let (clean_input, new_aliases) = extract_inline_aliases(&state.input_buffer);
+                if !new_aliases.is_empty() {
+                    for (k, v) in new_aliases {
+                        state.tag_aliases.insert(k.clone(), v.clone());
+                        let modified = state.store.apply_alias_retroactively(&k, &v);
+                        for mod_t in modified {
+                            let _ = action_tx.send(Action::UpdateTask(mod_t)).await;
+                        }
+                    }
+                    if let Ok(mut cfg) = Config::load() {
+                        cfg.tag_aliases = state.tag_aliases.clone();
+                        let _ = cfg.save();
+                    }
+                }
+
+                // 2. Process Task Update
                 let target_uid = state
                     .editing_index
                     .and_then(|idx| state.tasks.get(idx).map(|t| t.uid.clone()));
@@ -114,7 +166,7 @@ pub async fn handle_key_event(
                 if let Some(uid) = target_uid
                     && let Some((t, _)) = state.store.get_task_mut(&uid)
                 {
-                    t.apply_smart_input(&state.input_buffer, &state.tag_aliases);
+                    t.apply_smart_input(&clean_input, &state.tag_aliases);
                     let clone = t.clone();
                     state.refresh_filtered_view();
                     state.mode = InputMode::Normal;

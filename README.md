@@ -201,7 +201,7 @@ When adding (`a`) or editing (`e`) a task, you can use shortcuts directly in the
     *   Also supports interval syntax: `rec:every 2 weeks`.
 *   `#tag`: Adds a **tag** / category.
     *   **Sub-tags:** Use colons to create hierarchy: `#project:backend`. Selecting `#project` will also show `#project:backend` tasks.
-    *   **Aliases:** If you have configured aliases (e.g., `groceries = ["home"]`), typing `#groceries` will automatically apply `#groceries` AND `#home`.
+    *   **Aliases:** Define aliases inline with `#alias=#tag1,#tag2`. Future uses of `#alias` will expand automatically, and the definition applies retroactively to existing tasks.
     *   **Quick jump:** Typing only a tag (e.g., `#urgent`) and pressing Enter will switch the view to that tag.
 
 ## Advanced Search

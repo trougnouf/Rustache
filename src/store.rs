@@ -198,6 +198,67 @@ impl TaskStore {
         None
     }
 
+    // --- NEW SHARED LOGIC ---
+
+    /// Finds all tasks tagged with `alias_key` that are missing one or more of `target_tags`.
+    /// Updates them in the store and returns copies of the modified tasks for network syncing.
+    pub fn apply_alias_retroactively(
+        &mut self,
+        alias_key: &str,
+        target_tags: &[String],
+    ) -> Vec<Task> {
+        let mut uids_to_update = Vec::new();
+
+        // 1. Identify
+        for tasks in self.calendars.values() {
+            for task in tasks {
+                if task.categories.contains(&alias_key.to_string()) {
+                    let needs_update = target_tags.iter().any(|t| !task.categories.contains(t));
+                    if needs_update {
+                        uids_to_update.push(task.uid.clone());
+                    }
+                }
+            }
+        }
+
+        if uids_to_update.is_empty() {
+            return Vec::new();
+        }
+
+        // 2. Modify
+        let mut modified_tasks = Vec::new();
+        // We collect modified tasks to avoid borrowing issues while iterating
+        for uid in uids_to_update {
+            if let Some((task, _)) = self.get_task_mut(&uid) {
+                for target_tag in target_tags {
+                    if !task.categories.contains(target_tag) {
+                        task.categories.push(target_tag.clone());
+                    }
+                }
+                task.categories.sort();
+                task.categories.dedup();
+
+                // Track for return
+                modified_tasks.push(task.clone());
+            }
+        }
+
+        // 3. Persist to Disk (Cache)
+        let mut modified_calendars = HashSet::new();
+        for t in &modified_tasks {
+            modified_calendars.insert(t.calendar_href.clone());
+        }
+
+        for cal_href in modified_calendars {
+            if let Some(tasks) = self.calendars.get(&cal_href) {
+                let (_, token) = Cache::load(&cal_href).unwrap_or((vec![], None));
+                let _ = Cache::save(&cal_href, tasks, token);
+            }
+        }
+
+        modified_tasks
+    }
+
     // --- Read/Filter Logic ---
 
     pub fn get_all_categories(
@@ -236,10 +297,8 @@ impl TaskStore {
                             }
                             current_hierarchy.push_str(part);
 
-                            // Mark this tag (or parent) as present in the dataset
                             present_tags.insert(current_hierarchy.clone());
 
-                            // If task is active, increment count for this tag and its parents
                             if is_active {
                                 *active_counts.entry(current_hierarchy.clone()).or_insert(0) += 1;
                             }
@@ -279,7 +338,6 @@ impl TaskStore {
             result.push((UNCATEGORIZED_ID.to_string(), count));
         }
 
-        // Sort alphabetically, this naturally groups parents and children (gaming, gaming:coop)
         result.sort_by(|a, b| a.0.cmp(&b.0));
         result
     }
@@ -352,12 +410,10 @@ impl TaskStore {
                     let filter_uncategorized =
                         options.selected_categories.contains(UNCATEGORIZED_ID);
 
-                    // Helper to check if a task's category matches the selection (exact OR child of selection)
                     let check_match = |task_cat: &str, selected: &str| -> bool {
                         if task_cat == selected {
                             return true;
                         }
-                        // Check for hierarchy: "gaming:coop" matches selected "gaming"
                         if let Some(stripped) = task_cat.strip_prefix(selected) {
                             return stripped.starts_with(':');
                         }

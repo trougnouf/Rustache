@@ -1,10 +1,12 @@
-// File: ./src/gui/update/common.rs
+// File: src/gui/update/common.rs
 use crate::config::Config;
+use crate::gui::async_ops::*;
+use crate::gui::message::Message;
 use crate::gui::state::GuiApp;
 use crate::store::FilterOptions;
 use chrono::{Duration, Utc};
+use iced::Task;
 
-// Helper: Re-run filters based on current App state
 pub fn refresh_filtered_tasks(app: &mut GuiApp) {
     let cal_filter = None;
 
@@ -30,7 +32,6 @@ pub fn refresh_filtered_tasks(app: &mut GuiApp) {
     });
 }
 
-// Helper: Save current configuration to disk
 pub fn save_config(app: &GuiApp) {
     let _ = Config {
         url: app.ob_url.clone(),
@@ -46,4 +47,35 @@ pub fn save_config(app: &GuiApp) {
         sort_cutoff_months: app.sort_cutoff_months,
     }
     .save();
+}
+
+/// Helper: Find all tasks with a specific alias tag and ensure they have all target tags.
+/// Returns an Iced Task batch if network operations are needed.
+pub fn apply_alias_retroactively(
+    app: &mut GuiApp,
+    alias_key: &str,
+    target_tags: &[String],
+) -> Option<Task<Message>> {
+    // Use the shared logic in TaskStore
+    let modified_tasks = app.store.apply_alias_retroactively(alias_key, target_tags);
+
+    if modified_tasks.is_empty() {
+        return None;
+    }
+
+    refresh_filtered_tasks(app);
+
+    // Sync Phase
+    if let Some(client) = &app.client {
+        let mut commands = Vec::new();
+        for t in modified_tasks {
+            commands.push(Task::perform(
+                async_update_wrapper(client.clone(), t),
+                Message::SyncSaved,
+            ));
+        }
+        return Some(Task::batch(commands));
+    }
+
+    None
 }

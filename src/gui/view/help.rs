@@ -1,4 +1,4 @@
-// File: ./src/gui/view/help.rs
+// File: src/gui/view/help.rs
 use crate::gui::message::Message;
 use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Color, Element, Length, Theme};
@@ -27,6 +27,7 @@ pub fn view_help() -> Element<'static, Message> {
             vec![
                 entry("!1", "Priority High (1) to Low (9)", "!1, !5, !9"),
                 entry("#tag", "Add category. Use ':' for sub-tags.", "#work, #dev:backend"),
+                entry("#a=#b,#c", "Define/update alias inline.", "#groceries=#home,#shopping"),
                 entry("~30m", "Estimated Duration (m/h/d/w).", "~30m, ~1.5h, ~2d"),
             ]
         ),
