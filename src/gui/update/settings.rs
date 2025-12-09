@@ -214,10 +214,62 @@ pub fn handle(app: &mut GuiApp, message: Message) -> Task<Message> {
                         .trim()
                         .trim_start_matches('#')
                         .to_string();
-                    app.tag_aliases.insert(key, tags);
+                    app.tag_aliases.insert(key.clone(), tags.clone());
                     app.alias_input_key.clear();
                     app.alias_input_values.clear();
                     save_config(app);
+
+                    // --- Retroactive application of alias ---
+                    // 1. Find all tasks that have the alias key but are missing some target tags
+                    let mut uids_to_update = Vec::new();
+                    for tasks in app.store.calendars.values() {
+                        for task in tasks {
+                            if task.categories.contains(&key) {
+                                let needs_update =
+                                    tags.iter().any(|t| !task.categories.contains(t));
+                                if needs_update {
+                                    uids_to_update.push(task.uid.clone());
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Update them
+                    let mut modified_tasks = Vec::new();
+                    for uid in uids_to_update {
+                        if let Some((task, _)) = app.store.get_task_mut(&uid) {
+                            for target_tag in &tags {
+                                if !task.categories.contains(target_tag) {
+                                    task.categories.push(target_tag.clone());
+                                }
+                            }
+                            task.categories.sort();
+                            task.categories.dedup();
+                            modified_tasks.push(task.clone());
+                        }
+                    }
+
+                    if !modified_tasks.is_empty() {
+                        // 3. Persist changes
+                        // Update cache/store state
+                        for t in &modified_tasks {
+                            app.store.update_or_add_task(t.clone());
+                        }
+
+                        refresh_filtered_tasks(app);
+
+                        // Queue network sync
+                        if let Some(client) = &app.client {
+                            let mut commands = Vec::new();
+                            for t in modified_tasks {
+                                commands.push(Task::perform(
+                                    async_update_wrapper(client.clone(), t),
+                                    Message::SyncSaved,
+                                ));
+                            }
+                            return Task::batch(commands);
+                        }
+                    }
                 }
             }
             Task::none()
