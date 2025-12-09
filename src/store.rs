@@ -226,9 +226,23 @@ impl TaskStore {
                     }
                 } else {
                     for cat in &task.categories {
-                        present_tags.insert(cat.clone());
-                        if is_active {
-                            *active_counts.entry(cat.clone()).or_insert(0) += 1;
+                        // Handle hierarchy: gaming:coop -> gaming, gaming:coop
+                        let parts: Vec<&str> = cat.split(':').collect();
+                        let mut current_hierarchy = String::with_capacity(cat.len());
+
+                        for (i, part) in parts.iter().enumerate() {
+                            if i > 0 {
+                                current_hierarchy.push(':');
+                            }
+                            current_hierarchy.push_str(part);
+
+                            // Mark this tag (or parent) as present in the dataset
+                            present_tags.insert(current_hierarchy.clone());
+
+                            // If task is active, increment count for this tag and its parents
+                            if is_active {
+                                *active_counts.entry(current_hierarchy.clone()).or_insert(0) += 1;
+                            }
                         }
                     }
                 }
@@ -265,6 +279,7 @@ impl TaskStore {
             result.push((UNCATEGORIZED_ID.to_string(), count));
         }
 
+        // Sort alphabetically, this naturally groups parents and children (gaming, gaming:coop)
         result.sort_by(|a, b| a.0.cmp(&b.0));
         result
     }
@@ -336,14 +351,36 @@ impl TaskStore {
                 if !options.selected_categories.is_empty() {
                     let filter_uncategorized =
                         options.selected_categories.contains(UNCATEGORIZED_ID);
+
+                    // Helper to check if a task's category matches the selection (exact OR child of selection)
+                    let check_match = |task_cat: &str, selected: &str| -> bool {
+                        if task_cat == selected {
+                            return true;
+                        }
+                        // Check for hierarchy: "gaming:coop" matches selected "gaming"
+                        if let Some(stripped) = task_cat.strip_prefix(selected) {
+                            return stripped.starts_with(':');
+                        }
+                        false
+                    };
+
                     if options.match_all_categories {
                         for sel in options.selected_categories {
                             if sel == UNCATEGORIZED_ID {
                                 if !t.categories.is_empty() {
                                     return false;
                                 }
-                            } else if !t.categories.contains(sel) {
-                                return false;
+                            } else {
+                                let mut has_cat_or_child = false;
+                                for task_cat in &t.categories {
+                                    if check_match(task_cat, sel) {
+                                        has_cat_or_child = true;
+                                        break;
+                                    }
+                                }
+                                if !has_cat_or_child {
+                                    return false;
+                                }
                             }
                         }
                     } else {
@@ -352,8 +389,15 @@ impl TaskStore {
                             hit = true;
                         } else {
                             for sel in options.selected_categories {
-                                if sel != UNCATEGORIZED_ID && t.categories.contains(sel) {
-                                    hit = true;
+                                if sel != UNCATEGORIZED_ID {
+                                    for task_cat in &t.categories {
+                                        if check_match(task_cat, sel) {
+                                            hit = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if hit {
                                     break;
                                 }
                             }

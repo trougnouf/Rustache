@@ -1,5 +1,3 @@
-
-
 # Cfait
 > Take control of your TODO list
 
@@ -24,7 +22,7 @@ It features both an efficient **TUI (Terminal UI)** and a modern **GUI (Graphica
 *   **GTD workflow:** mark tasks as **in process** (`>`), **cancelled** (`x`), or **done**.
 *   **Duration estimation:** estimate time (`~2h`) and filter tasks by duration (`~<30m`).
 *   **Syncs everywhere:** fully compatible with standard CalDAV servers (Radicale, Nextcloud, iCloud, etc.).
-*   **Tag support:** organize tasks across all calendars using tags (e.g., `#woodworking`, `#project_potato`).
+*   **Tag support:** organize tasks using tags and sub-tags (e.g., `#gaming:coop` is automatically included in `#gaming`).
 *   **Tag aliases:** define shortcuts (e.g., `#groceries`) that automatically expand into multiple tags (e.g., `#groceries`, `#shopping`, `#home`).
 *   **Dependencies:** link tasks using RFC 9253 (blocked by) logic.
 *   **Hierarchy support:** create sub-tasks directly from parents and organize nested lists easily.
@@ -202,6 +200,7 @@ When adding (`a`) or editing (`e`) a task, you can use shortcuts directly in the
 *   `rec:RECURRENCE`: Sets **recurrence** (e.g., `rec:weekly`, `rec:daily`).
     *   Also supports interval syntax: `rec:every 2 weeks`.
 *   `#tag`: Adds a **tag** / category.
+    *   **Sub-tags:** Use colons to create hierarchy: `#project:backend`. Selecting `#project` will also show `#project:backend` tasks.
     *   **Aliases:** If you have configured aliases (e.g., `groceries = ["home"]`), typing `#groceries` will automatically apply `#groceries` AND `#home`.
     *   **Quick jump:** Typing only a tag (e.g., `#urgent`) and pressing Enter will switch the view to that tag.
 
