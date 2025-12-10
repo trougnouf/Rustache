@@ -204,9 +204,27 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
             let base_style = if is_blocked {
                 Style::default().fg(Color::DarkGray)
             } else {
-                match t.priority_color_idx() {
+                // Priority Gradient: Red (Hot) -> Yellow (Normal) -> Purple/Slate (Cold)
+                match t.priority {
+                    // 1: Critical -> Red
                     1 => Style::default().fg(Color::Red),
-                    2 => Style::default().fg(Color::Yellow),
+                    // 2: Urgent -> Orange-Red
+                    2 => Style::default().fg(Color::Rgb(255, 69, 0)),
+                    // 3: High -> Dark Orange
+                    3 => Style::default().fg(Color::Rgb(255, 140, 0)),
+                    // 4: Med-High -> Amber/Gold
+                    4 => Style::default().fg(Color::Rgb(255, 190, 0)),
+                    // 5: Normal -> Yellow
+                    5 => Style::default().fg(Color::Yellow),
+                    // 6: Med-Low -> Pale Goldenrod / Khaki (Desaturating)
+                    6 => Style::default().fg(Color::Rgb(240, 230, 140)),
+                    // 7: Low -> Light Steel Blue (Cooling down)
+                    7 => Style::default().fg(Color::Rgb(176, 196, 222)),
+                    // 8: Very Low -> Medium Purple / Slate
+                    8 => Style::default().fg(Color::Rgb(147, 112, 219)),
+                    // 9: Lowest -> Muted Lavender / Grey-Purple
+                    9 => Style::default().fg(Color::Rgb(170, 150, 180)),
+                    // 0: Unset -> White
                     _ => Style::default(),
                 }
             };

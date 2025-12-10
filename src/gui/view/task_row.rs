@@ -22,9 +22,27 @@ pub fn view_task_row<'a>(
     let color = if is_blocked {
         Color::from_rgb(0.5, 0.5, 0.5)
     } else {
+        // Priority Gradient: Red (Hot) -> Yellow (Normal) -> Purple/Slate (Cold)
         match task.priority {
-            1..=4 => Color::from_rgb(0.8, 0.2, 0.2),
-            5 => Color::from_rgb(0.8, 0.8, 0.2),
+            // 1: Red
+            1 => Color::from_rgb(1.0, 0.2, 0.2),
+            // 2: Orange-Red
+            2 => Color::from_rgb(1.0, 0.4, 0.2),
+            // 3: Orange
+            3 => Color::from_rgb(1.0, 0.6, 0.2),
+            // 4: Amber
+            4 => Color::from_rgb(1.0, 0.8, 0.2),
+            // 5: Yellow
+            5 => Color::from_rgb(1.0, 1.0, 0.2),
+            // 6: Pale Khaki (Desaturating)
+            6 => Color::from_rgb(0.85, 0.85, 0.55),
+            // 7: Light Steel Blue (Cooling)
+            7 => Color::from_rgb(0.7, 0.75, 0.85),
+            // 8: Slate / Muted Purple
+            8 => Color::from_rgb(0.65, 0.6, 0.8),
+            // 9: Greyish Lavender
+            9 => Color::from_rgb(0.6, 0.55, 0.65),
+            // 0: White
             _ => Color::WHITE,
         }
     };

@@ -113,14 +113,6 @@ impl Task {
         }
     }
 
-    pub fn priority_color_idx(&self) -> u8 {
-        match self.priority {
-            1..=4 => 1, // High
-            5 => 2,     // Medium
-            _ => 0,     // Normal/Low
-        }
-    }
-
     // --- Logic ---
 
     pub fn compare_with_cutoff(&self, other: &Self, cutoff: Option<DateTime<Utc>>) -> Ordering {
