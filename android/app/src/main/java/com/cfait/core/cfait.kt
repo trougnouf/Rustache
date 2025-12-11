@@ -647,6 +647,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
     external fun uniffi_cfait_checksum_method_cfaitmobile_delete_task(
     ): Short
+    external fun uniffi_cfait_checksum_method_cfaitmobile_get_calendars(
+    ): Short
     external fun uniffi_cfait_checksum_method_cfaitmobile_get_config(
     ): Short
     external fun uniffi_cfait_checksum_method_cfaitmobile_get_tasks(
@@ -655,7 +657,15 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
     external fun uniffi_cfait_checksum_method_cfaitmobile_save_config(
     ): Short
+    external fun uniffi_cfait_checksum_method_cfaitmobile_set_calendar_visibility(
+    ): Short
+    external fun uniffi_cfait_checksum_method_cfaitmobile_set_default_calendar(
+    ): Short
     external fun uniffi_cfait_checksum_method_cfaitmobile_toggle_task(
+    ): Short
+    external fun uniffi_cfait_checksum_method_cfaitmobile_update_task_description(
+    ): Short
+    external fun uniffi_cfait_checksum_method_cfaitmobile_update_task_smart(
     ): Short
     external fun uniffi_cfait_checksum_constructor_cfaitmobile_new(
     ): Short
@@ -689,6 +699,8 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_cfait_fn_method_cfaitmobile_delete_task(`ptr`: Long,`uid`: RustBuffer.ByValue,
     ): Long
+    external fun uniffi_cfait_fn_method_cfaitmobile_get_calendars(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_cfait_fn_method_cfaitmobile_get_config(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_cfait_fn_method_cfaitmobile_get_tasks(`ptr`: Long,
@@ -697,7 +709,15 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_cfait_fn_method_cfaitmobile_save_config(`ptr`: Long,`url`: RustBuffer.ByValue,`user`: RustBuffer.ByValue,`pass`: RustBuffer.ByValue,`insecure`: Byte,`hideCompleted`: Byte,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
+    external fun uniffi_cfait_fn_method_cfaitmobile_set_calendar_visibility(`ptr`: Long,`href`: RustBuffer.ByValue,`visible`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_cfait_fn_method_cfaitmobile_set_default_calendar(`ptr`: Long,`href`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun uniffi_cfait_fn_method_cfaitmobile_toggle_task(`ptr`: Long,`uid`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_cfait_fn_method_cfaitmobile_update_task_description(`ptr`: Long,`uid`: RustBuffer.ByValue,`description`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_cfait_fn_method_cfaitmobile_update_task_smart(`ptr`: Long,`uid`: RustBuffer.ByValue,`smartInput`: RustBuffer.ByValue,
     ): Long
     external fun ffi_cfait_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -821,13 +841,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_cfait_checksum_method_cfaitmobile_add_task_smart() != 42651.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_cfait_checksum_method_cfaitmobile_connect() != 38197.toShort()) {
+    if (lib.uniffi_cfait_checksum_method_cfaitmobile_connect() != 18164.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cfait_checksum_method_cfaitmobile_delete_task() != 55596.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_cfait_checksum_method_cfaitmobile_get_config() != 45957.toShort()) {
+    if (lib.uniffi_cfait_checksum_method_cfaitmobile_get_calendars() != 46615.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_cfait_checksum_method_cfaitmobile_get_config() != 1475.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cfait_checksum_method_cfaitmobile_get_tasks() != 57156.toShort()) {
@@ -836,10 +859,22 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_cfait_checksum_method_cfaitmobile_load_and_connect() != 17717.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_cfait_checksum_method_cfaitmobile_save_config() != 30574.toShort()) {
+    if (lib.uniffi_cfait_checksum_method_cfaitmobile_save_config() != 17339.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_cfait_checksum_method_cfaitmobile_set_calendar_visibility() != 63556.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_cfait_checksum_method_cfaitmobile_set_default_calendar() != 46004.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cfait_checksum_method_cfaitmobile_toggle_task() != 2169.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_cfait_checksum_method_cfaitmobile_update_task_description() != 59710.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_cfait_checksum_method_cfaitmobile_update_task_smart() != 8105.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cfait_checksum_constructor_cfaitmobile_new() != 17119.toShort()) {
@@ -1068,6 +1103,29 @@ public object FfiConverterUByte: FfiConverter<UByte, Byte> {
 /**
  * @suppress
  */
+public object FfiConverterUInt: FfiConverter<UInt, Int> {
+    override fun lift(value: Int): UInt {
+        return value.toUInt()
+    }
+
+    override fun read(buf: ByteBuffer): UInt {
+        return lift(buf.getInt())
+    }
+
+    override fun lower(value: UInt): Int {
+        return value.toInt()
+    }
+
+    override fun allocationSize(value: UInt) = 4UL
+
+    override fun write(value: UInt, buf: ByteBuffer) {
+        buf.putInt(value.toInt())
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterBoolean: FfiConverter<Boolean, Byte> {
     override fun lift(value: Byte): Boolean {
         return value.toInt() != 0
@@ -1246,28 +1304,29 @@ public interface CfaitMobileInterface {
     
     suspend fun `addTaskSmart`(`input`: kotlin.String)
     
-    /**
-     * Connect explicitly (e.g. from Settings)
-     */
     suspend fun `connect`(`url`: kotlin.String, `user`: kotlin.String, `pass`: kotlin.String, `insecure`: kotlin.Boolean): kotlin.String
     
     suspend fun `deleteTask`(`uid`: kotlin.String)
     
-    /**
-     * Read config for UI population
-     */
+    fun `getCalendars`(): List<MobileCalendar>
+    
     fun `getConfig`(): MobileConfig
     
     suspend fun `getTasks`(): List<MobileTask>
     
     suspend fun `loadAndConnect`(): kotlin.String
     
-    /**
-     * Save config from UI
-     */
     fun `saveConfig`(`url`: kotlin.String, `user`: kotlin.String, `pass`: kotlin.String, `insecure`: kotlin.Boolean, `hideCompleted`: kotlin.Boolean)
     
+    fun `setCalendarVisibility`(`href`: kotlin.String, `visible`: kotlin.Boolean)
+    
+    fun `setDefaultCalendar`(`href`: kotlin.String)
+    
     suspend fun `toggleTask`(`uid`: kotlin.String)
+    
+    suspend fun `updateTaskDescription`(`uid`: kotlin.String, `description`: kotlin.String)
+    
+    suspend fun `updateTaskSmart`(`uid`: kotlin.String, `smartInput`: kotlin.String)
     
     companion object
 }
@@ -1399,9 +1458,6 @@ open class CfaitMobile: Disposable, AutoCloseable, CfaitMobileInterface
     }
 
     
-    /**
-     * Connect explicitly (e.g. from Settings)
-     */
     @Throws(MobileException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
     override suspend fun `connect`(`url`: kotlin.String, `user`: kotlin.String, `pass`: kotlin.String, `insecure`: kotlin.Boolean) : kotlin.String {
@@ -1444,10 +1500,20 @@ open class CfaitMobile: Disposable, AutoCloseable, CfaitMobileInterface
     )
     }
 
+    override fun `getCalendars`(): List<MobileCalendar> {
+            return FfiConverterSequenceTypeMobileCalendar.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_cfait_fn_method_cfaitmobile_get_calendars(
+        it,
+        _status)
+}
+    }
+    )
+    }
     
-    /**
-     * Read config for UI population
-     */override fun `getConfig`(): MobileConfig {
+
+    override fun `getConfig`(): MobileConfig {
             return FfiConverterTypeMobileConfig.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
@@ -1502,9 +1568,6 @@ open class CfaitMobile: Disposable, AutoCloseable, CfaitMobileInterface
     }
 
     
-    /**
-     * Save config from UI
-     */
     @Throws(MobileException::class)override fun `saveConfig`(`url`: kotlin.String, `user`: kotlin.String, `pass`: kotlin.String, `insecure`: kotlin.Boolean, `hideCompleted`: kotlin.Boolean)
         = 
     callWithHandle {
@@ -1512,6 +1575,32 @@ open class CfaitMobile: Disposable, AutoCloseable, CfaitMobileInterface
     UniffiLib.uniffi_cfait_fn_method_cfaitmobile_save_config(
         it,
         FfiConverterString.lower(`url`),FfiConverterString.lower(`user`),FfiConverterString.lower(`pass`),FfiConverterBoolean.lower(`insecure`),FfiConverterBoolean.lower(`hideCompleted`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MobileException::class)override fun `setCalendarVisibility`(`href`: kotlin.String, `visible`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MobileException) { _status ->
+    UniffiLib.uniffi_cfait_fn_method_cfaitmobile_set_calendar_visibility(
+        it,
+        FfiConverterString.lower(`href`),FfiConverterBoolean.lower(`visible`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MobileException::class)override fun `setDefaultCalendar`(`href`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MobileException) { _status ->
+    UniffiLib.uniffi_cfait_fn_method_cfaitmobile_set_default_calendar(
+        it,
+        FfiConverterString.lower(`href`),_status)
 }
     }
     
@@ -1526,6 +1615,50 @@ open class CfaitMobile: Disposable, AutoCloseable, CfaitMobileInterface
             UniffiLib.uniffi_cfait_fn_method_cfaitmobile_toggle_task(
                 uniffiHandle,
                 FfiConverterString.lower(`uid`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_cfait_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_cfait_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_cfait_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        MobileException.ErrorHandler,
+    )
+    }
+
+    
+    @Throws(MobileException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `updateTaskDescription`(`uid`: kotlin.String, `description`: kotlin.String) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_cfait_fn_method_cfaitmobile_update_task_description(
+                uniffiHandle,
+                FfiConverterString.lower(`uid`),FfiConverterString.lower(`description`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_cfait_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_cfait_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_cfait_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        MobileException.ErrorHandler,
+    )
+    }
+
+    
+    @Throws(MobileException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `updateTaskSmart`(`uid`: kotlin.String, `smartInput`: kotlin.String) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_cfait_fn_method_cfaitmobile_update_task_smart(
+                uniffiHandle,
+                FfiConverterString.lower(`uid`),FfiConverterString.lower(`smartInput`),
             )
         },
         { future, callback, continuation -> UniffiLib.ffi_cfait_rust_future_poll_void(future, callback, continuation) },
@@ -1574,6 +1707,57 @@ public object FfiConverterTypeCfaitMobile: FfiConverter<CfaitMobile, Long> {
 
     override fun write(value: CfaitMobile, buf: ByteBuffer) {
         buf.putLong(lower(value))
+    }
+}
+
+
+
+data class MobileCalendar (
+    var `name`: kotlin.String
+    , 
+    var `href`: kotlin.String
+    , 
+    var `color`: kotlin.String?
+    , 
+    var `isVisible`: kotlin.Boolean
+    , 
+    var `isLocal`: kotlin.Boolean
+    
+){
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMobileCalendar: FfiConverterRustBuffer<MobileCalendar> {
+    override fun read(buf: ByteBuffer): MobileCalendar {
+        return MobileCalendar(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MobileCalendar) = (
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`href`) +
+            FfiConverterOptionalString.allocationSize(value.`color`) +
+            FfiConverterBoolean.allocationSize(value.`isVisible`) +
+            FfiConverterBoolean.allocationSize(value.`isLocal`)
+    )
+
+    override fun write(value: MobileCalendar, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`href`, buf)
+            FfiConverterOptionalString.write(value.`color`, buf)
+            FfiConverterBoolean.write(value.`isVisible`, buf)
+            FfiConverterBoolean.write(value.`isLocal`, buf)
     }
 }
 
@@ -1643,9 +1827,19 @@ data class MobileTask (
     , 
     var `dueDateIso`: kotlin.String?
     , 
+    var `startDateIso`: kotlin.String?
+    , 
+    var `durationMins`: kotlin.UInt?
+    , 
     var `calendarHref`: kotlin.String
     , 
     var `categories`: List<kotlin.String>
+    , 
+    var `isRecurring`: kotlin.Boolean
+    , 
+    var `parentUid`: kotlin.String?
+    , 
+    var `smartString`: kotlin.String
     
 ){
     
@@ -1666,8 +1860,13 @@ public object FfiConverterTypeMobileTask: FfiConverterRustBuffer<MobileTask> {
             FfiConverterBoolean.read(buf),
             FfiConverterUByte.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
             FfiConverterString.read(buf),
             FfiConverterSequenceString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -1678,8 +1877,13 @@ public object FfiConverterTypeMobileTask: FfiConverterRustBuffer<MobileTask> {
             FfiConverterBoolean.allocationSize(value.`isDone`) +
             FfiConverterUByte.allocationSize(value.`priority`) +
             FfiConverterOptionalString.allocationSize(value.`dueDateIso`) +
+            FfiConverterOptionalString.allocationSize(value.`startDateIso`) +
+            FfiConverterOptionalUInt.allocationSize(value.`durationMins`) +
             FfiConverterString.allocationSize(value.`calendarHref`) +
-            FfiConverterSequenceString.allocationSize(value.`categories`)
+            FfiConverterSequenceString.allocationSize(value.`categories`) +
+            FfiConverterBoolean.allocationSize(value.`isRecurring`) +
+            FfiConverterOptionalString.allocationSize(value.`parentUid`) +
+            FfiConverterString.allocationSize(value.`smartString`)
     )
 
     override fun write(value: MobileTask, buf: ByteBuffer) {
@@ -1689,8 +1893,13 @@ public object FfiConverterTypeMobileTask: FfiConverterRustBuffer<MobileTask> {
             FfiConverterBoolean.write(value.`isDone`, buf)
             FfiConverterUByte.write(value.`priority`, buf)
             FfiConverterOptionalString.write(value.`dueDateIso`, buf)
+            FfiConverterOptionalString.write(value.`startDateIso`, buf)
+            FfiConverterOptionalUInt.write(value.`durationMins`, buf)
             FfiConverterString.write(value.`calendarHref`, buf)
             FfiConverterSequenceString.write(value.`categories`, buf)
+            FfiConverterBoolean.write(value.`isRecurring`, buf)
+            FfiConverterOptionalString.write(value.`parentUid`, buf)
+            FfiConverterString.write(value.`smartString`, buf)
     }
 }
 
@@ -1734,6 +1943,38 @@ public object FfiConverterTypeMobileError : FfiConverterRustBuffer<MobileExcepti
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalUInt: FfiConverterRustBuffer<kotlin.UInt?> {
+    override fun read(buf: ByteBuffer): kotlin.UInt? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterUInt.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.UInt?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterUInt.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.UInt?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterUInt.write(value, buf)
+        }
+    }
 }
 
 
@@ -1792,6 +2033,34 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMobileCalendar: FfiConverterRustBuffer<List<MobileCalendar>> {
+    override fun read(buf: ByteBuffer): List<MobileCalendar> {
+        val len = buf.getInt()
+        return List<MobileCalendar>(len) {
+            FfiConverterTypeMobileCalendar.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MobileCalendar>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMobileCalendar.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MobileCalendar>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMobileCalendar.write(it, buf)
         }
     }
 }

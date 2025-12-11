@@ -15,6 +15,9 @@ local.properties
 # Android - Native Libs (Built by cargo-ndk)
 android/app/src/main/jniLibs/
 
+# Ignore copied assets
+android/app/src/main/res/font/
+
 # IDE
 .idea/
 *.iml

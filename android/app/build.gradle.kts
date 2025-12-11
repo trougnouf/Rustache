@@ -58,3 +58,17 @@ dependencies {
     implementation("net.java.dev.jna:jna:5.13.0@aar")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
 }
+
+tasks.register<Copy>("copyFonts") {
+    description = "Copies fonts from root assets to Android resources"
+    // Go up two levels from android/app/ to root
+    from("${project.rootDir}/../assets/fonts/SymbolsNerdFont-Regular.ttf")
+    into("${project.projectDir}/src/main/res/font")
+    // Android requires lowercase snake_case for resource files
+    rename { "symbols_nerd_font.ttf" }
+}
+
+// Hook into the build process so it happens automatically
+tasks.named("preBuild") {
+    dependsOn("copyFonts")
+}

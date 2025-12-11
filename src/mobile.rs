@@ -3,7 +3,7 @@ use crate::client::RustyClient;
 use crate::config::Config;
 use crate::model::Task;
 use crate::paths::AppPaths;
-use crate::storage::{LOCAL_CALENDAR_HREF, LocalStorage};
+use crate::storage::{LOCAL_CALENDAR_HREF, LOCAL_CALENDAR_NAME, LocalStorage};
 #[cfg(target_os = "android")]
 use android_logger::Config as LogConfig;
 #[cfg(target_os = "android")]
@@ -11,6 +11,7 @@ use log::LevelFilter;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+// --- Error Handling ---
 #[derive(Debug, uniffi::Error)]
 #[uniffi(flat_error)]
 pub enum MobileError {
@@ -44,6 +45,8 @@ impl std::fmt::Display for MobileError {
 }
 impl std::error::Error for MobileError {}
 
+// --- DTOs ---
+
 #[derive(uniffi::Record)]
 pub struct MobileTask {
     pub uid: String,
@@ -52,26 +55,47 @@ pub struct MobileTask {
     pub is_done: bool,
     pub priority: u8,
     pub due_date_iso: Option<String>,
+    pub start_date_iso: Option<String>,
+    pub duration_mins: Option<u32>,
     pub calendar_href: String,
     pub categories: Vec<String>,
+    pub is_recurring: bool,
+    pub parent_uid: Option<String>,
+    pub smart_string: String,
 }
 
 impl From<Task> for MobileTask {
     fn from(t: Task) -> Self {
+        // --- FIX: Capture smart string BEFORE moving fields ---
+        let smart = t.to_smart_string();
+
         Self {
             uid: t.uid,
-            summary: t.summary,
+            summary: t.summary, // String impls Clone automatically via from
             description: t.description,
             is_done: t.status.is_done(),
             priority: t.priority,
             due_date_iso: t.due.map(|d| d.to_rfc3339()),
+            start_date_iso: t.dtstart.map(|d| d.to_rfc3339()),
+            duration_mins: t.estimated_duration,
             calendar_href: t.calendar_href,
             categories: t.categories,
+            is_recurring: t.rrule.is_some(),
+            parent_uid: t.parent_uid,
+            smart_string: smart,
         }
     }
 }
 
-// DTO for Settings
+#[derive(uniffi::Record)]
+pub struct MobileCalendar {
+    pub name: String,
+    pub href: String,
+    pub color: Option<String>,
+    pub is_visible: bool,
+    pub is_local: bool,
+}
+
 #[derive(uniffi::Record)]
 pub struct MobileConfig {
     pub url: String,
@@ -86,7 +110,6 @@ pub struct CfaitMobile {
     client: Arc<Mutex<Option<RustyClient>>>,
 }
 
-// --- EXPORTED METHODS (Called from Kotlin) ---
 #[uniffi::export(async_runtime = "tokio")]
 impl CfaitMobile {
     #[uniffi::constructor]
@@ -103,7 +126,12 @@ impl CfaitMobile {
         }
     }
 
-    /// Read config for UI population
+    pub fn set_default_calendar(&self, href: String) -> Result<(), MobileError> {
+        let mut config = Config::load().map_err(MobileError::from)?;
+        config.default_calendar = Some(href);
+        config.save().map_err(MobileError::from)
+    }
+
     pub fn get_config(&self) -> MobileConfig {
         let c = Config::load().unwrap_or_default();
         MobileConfig {
@@ -115,7 +143,6 @@ impl CfaitMobile {
         }
     }
 
-    /// Save config from UI
     pub fn save_config(
         &self,
         url: String,
@@ -140,7 +167,6 @@ impl CfaitMobile {
         self.connect_internal(config).await
     }
 
-    /// Connect explicitly (e.g. from Settings)
     pub async fn connect(
         &self,
         url: String,
@@ -155,7 +181,6 @@ impl CfaitMobile {
             config.password = pass;
         }
         config.allow_insecure_certs = insecure;
-
         let res = self.connect_internal(config.clone()).await;
         if res.is_ok() {
             let _ = config.save();
@@ -163,15 +188,65 @@ impl CfaitMobile {
         res
     }
 
+    // --- DATA FETCHING ---
+
+    pub fn get_calendars(&self) -> Vec<MobileCalendar> {
+        let config = Config::load().unwrap_or_default();
+        let mut result = Vec::new();
+
+        // --- FIX: Pass reference to String (&String), not &str ---
+        let local_href = LOCAL_CALENDAR_HREF.to_string();
+
+        result.push(MobileCalendar {
+            name: LOCAL_CALENDAR_NAME.to_string(),
+            href: local_href.clone(),
+            color: None,
+            is_visible: !config.hidden_calendars.contains(&local_href), // Fixed
+            is_local: true,
+        });
+
+        if let Ok(cals) = crate::cache::Cache::load_calendars() {
+            for c in cals {
+                if c.href == LOCAL_CALENDAR_HREF {
+                    continue;
+                }
+                result.push(MobileCalendar {
+                    name: c.name,
+                    href: c.href.clone(),
+                    color: c.color,
+                    is_visible: !config.hidden_calendars.contains(&c.href),
+                    is_local: false,
+                });
+            }
+        }
+        result
+    }
+
+    pub fn set_calendar_visibility(&self, href: String, visible: bool) -> Result<(), MobileError> {
+        let mut config = Config::load().map_err(MobileError::from)?;
+        if visible {
+            config.hidden_calendars.retain(|h| h != &href);
+        } else if !config.hidden_calendars.contains(&href) {
+            config.hidden_calendars.push(href);
+        }
+        config.save().map_err(MobileError::from)
+    }
+
     pub async fn get_tasks(&self) -> Vec<MobileTask> {
+        let config = Config::load().unwrap_or_default();
         let mut tasks = Vec::new();
-        if let Ok(local) = LocalStorage::load() {
-            tasks.extend(local);
+
+        let is_hidden = |href: &str| config.hidden_calendars.iter().any(|h| h == href);
+
+        if !is_hidden(LOCAL_CALENDAR_HREF) {
+            if let Ok(local) = LocalStorage::load() {
+                tasks.extend(local);
+            }
         }
 
         if let Ok(cals) = crate::cache::Cache::load_calendars() {
             for cal in cals {
-                if cal.href == LOCAL_CALENDAR_HREF {
+                if cal.href == LOCAL_CALENDAR_HREF || is_hidden(&cal.href) {
                     continue;
                 }
                 if let Ok((cached, _)) = crate::cache::Cache::load(&cal.href) {
@@ -182,18 +257,19 @@ impl CfaitMobile {
         tasks.into_iter().map(MobileTask::from).collect()
     }
 
+    // --- ACTIONS ---
+
     pub async fn add_task_smart(&self, input: String) -> Result<(), MobileError> {
-        let aliases = std::collections::HashMap::new();
+        let aliases = Config::load().unwrap_or_default().tag_aliases;
         let mut task = Task::new(&input, &aliases);
 
         let guard = self.client.lock().await;
         if let Some(client) = &*guard {
-            let target_href = if let Ok(cfg) = Config::load() {
-                cfg.default_calendar
-                    .unwrap_or(LOCAL_CALENDAR_HREF.to_string())
-            } else {
-                LOCAL_CALENDAR_HREF.to_string()
-            };
+            let config = Config::load().unwrap_or_default();
+            let target_href = config
+                .default_calendar
+                .clone()
+                .unwrap_or(LOCAL_CALENDAR_HREF.to_string());
             task.calendar_href = target_href;
             client
                 .create_task(&mut task)
@@ -206,6 +282,29 @@ impl CfaitMobile {
             all.push(task);
             LocalStorage::save(&all).map_err(MobileError::from)
         }
+    }
+
+    pub async fn update_task_smart(
+        &self,
+        uid: String,
+        smart_input: String,
+    ) -> Result<(), MobileError> {
+        let aliases = Config::load().unwrap_or_default().tag_aliases;
+        self.modify_task(uid, |t| {
+            t.apply_smart_input(&smart_input, &aliases);
+        })
+        .await
+    }
+
+    pub async fn update_task_description(
+        &self,
+        uid: String,
+        description: String,
+    ) -> Result<(), MobileError> {
+        self.modify_task(uid, |t| {
+            t.description = description.clone();
+        })
+        .await
     }
 
     pub async fn toggle_task(&self, uid: String) -> Result<(), MobileError> {
@@ -241,19 +340,15 @@ impl CfaitMobile {
     }
 }
 
-// --- INTERNAL HELPERS (Not exposed to Kotlin) ---
+// --- INTERNAL HELPERS ---
 impl CfaitMobile {
     async fn connect_internal(&self, config: Config) -> Result<String, MobileError> {
         match RustyClient::connect_with_fallback(config).await {
             Ok((client, calendars, _, _, warning)) => {
                 *self.client.lock().await = Some(client.clone());
-
-                // Force sync all calendars to populate cache ---
-                // This ensures get_tasks() returns remote items immediately.
                 if let Err(e) = client.get_all_tasks(&calendars).await {
-                    println!("Initial sync failed: {:?}", e); // Non-fatal, just log
+                    println!("Sync error: {:?}", e);
                 }
-
                 Ok(warning.unwrap_or_else(|| "Connected".to_string()))
             }
             Err(e) => Err(MobileError::from(e)),
