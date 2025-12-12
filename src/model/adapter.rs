@@ -1,4 +1,4 @@
-// File: ./src/model/adapter.rs
+// File: src/model/adapter.rs
 use crate::model::item::{RawProperty, Task, TaskStatus};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use icalendar::{Calendar, CalendarComponent, Component, Todo, TodoStatus};
@@ -348,37 +348,10 @@ impl Task {
         categories.sort();
         categories.dedup();
 
-        // --- OPTIMIZED RELATION EXTRACTION ---
-        let mut parent_uid = None;
-        let mut dependencies = Vec::new();
-
-        let process_related =
-            |prop: &icalendar::Property, parent: &mut Option<String>, deps: &mut Vec<String>| {
-                let val = prop.value().trim().to_string();
-                // FIXED: .value() before .to_uppercase()
-                let reltype = prop
-                    .params()
-                    .get("RELTYPE")
-                    .map(|p| p.value().to_uppercase())
-                    .unwrap_or_default();
-
-                if reltype == "DEPENDS-ON" {
-                    if !deps.contains(&val) {
-                        deps.push(val);
-                    }
-                } else if reltype == "PARENT" || reltype.is_empty() {
-                    *parent = Some(val);
-                }
-            };
-
-        if let Some(props) = todo.multi_properties().get("RELATED-TO") {
-            for prop in props {
-                process_related(prop, &mut parent_uid, &mut dependencies);
-            }
-        }
-        if let Some(prop) = todo.properties().get("RELATED-TO") {
-            process_related(prop, &mut parent_uid, &mut dependencies);
-        }
+        // --- OPTIMIZED RELATION EXTRACTION (MANUAL PARSE) ---
+        // Use manual parsing to avoid issues where icalendar library overwrites duplicate keys
+        // (e.g. RELATED-TO) when they are not explicitly handled as multi-properties.
+        let (parent_uid, dependencies) = parse_related_to_manually(raw_ics);
 
         // --- CAPTURE UNMAPPED PROPERTIES ---
         let mut unmapped_properties = Vec::new();
@@ -399,13 +372,14 @@ impl Task {
             }
         };
 
+        // Use case-insensitive check for handled keys
         for (key, prop) in todo.properties() {
-            if !HANDLED_KEYS.contains(&key.as_str()) {
+            if !HANDLED_KEYS.contains(&key.to_uppercase().as_str()) {
                 unmapped_properties.push(to_raw(prop));
             }
         }
         for (key, props) in todo.multi_properties() {
-            if !HANDLED_KEYS.contains(&key.as_str()) {
+            if !HANDLED_KEYS.contains(&key.to_uppercase().as_str()) {
                 for prop in props {
                     unmapped_properties.push(to_raw(prop));
                 }
@@ -438,4 +412,48 @@ impl Task {
             raw_components,
         })
     }
+}
+
+/// Helper: Manually parse RELATED-TO from raw ICS string.
+/// This handles unfolding lines and ensures we catch ALL occurrences,
+/// bypassing potential overwrites in the icalendar parser.
+fn parse_related_to_manually(raw_ics: &str) -> (Option<String>, Vec<String>) {
+    let mut parent = None;
+    let mut deps = Vec::new();
+    let mut current_line = String::new();
+
+    let process_line = |line: &str, p: &mut Option<String>, d: &mut Vec<String>| {
+        if line.to_uppercase().starts_with("RELATED-TO") {
+            if let Some((params_part, value)) = line.split_once(':') {
+                let params_upper = params_part.to_uppercase();
+                // Naive check usually sufficient for RELTYPE=DEPENDS-ON
+                let is_dependency = params_upper.contains("RELTYPE=DEPENDS-ON");
+                let val = value.trim().to_string();
+                if is_dependency {
+                    if !d.contains(&val) {
+                        d.push(val);
+                    }
+                } else {
+                    *p = Some(val);
+                }
+            }
+        }
+    };
+
+    for raw_line in raw_ics.lines() {
+        // Handle folding: Lines starting with whitespace are continuations
+        if raw_line.starts_with(' ') || raw_line.starts_with('\t') {
+            current_line.push_str(raw_line.trim_start());
+        } else {
+            if !current_line.is_empty() {
+                process_line(&current_line, &mut parent, &mut deps);
+            }
+            current_line = raw_line.to_string();
+        }
+    }
+    if !current_line.is_empty() {
+        process_line(&current_line, &mut parent, &mut deps);
+    }
+
+    (parent, deps)
 }

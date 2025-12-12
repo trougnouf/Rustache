@@ -521,6 +521,19 @@ impl RustyClient {
 
     // --- JOURNAL SYNC ---
 
+    // NEW HELPER: Fetch ETag explicitly if missing in PUT response
+    async fn fetch_etag(&self, path: &str) -> Option<String> {
+        if let Some(client) = &self.client {
+            if let Ok(resp) = client
+                .request(GetProperty::new(path, &names::GETETAG))
+                .await
+            {
+                return resp.value;
+            }
+        }
+        None
+    }
+
     pub async fn sync_journal(&self) -> Result<Vec<String>, String> {
         let client = self.client.as_ref().ok_or("Offline")?;
         let mut warnings = Vec::new();
@@ -537,6 +550,7 @@ impl RustyClient {
             let mut conflict_resolved_action = None;
             let mut new_etag_to_propagate: Option<String> = None;
             let mut new_href_to_propagate: Option<(String, String)> = None;
+            let mut path_for_refresh: Option<String> = None;
 
             let result = match &next_action {
                 Action::Create(task) => {
@@ -555,6 +569,8 @@ impl RustyClient {
                         Ok(resp) => {
                             if let Some(etag) = resp.etag {
                                 new_etag_to_propagate = Some(etag);
+                            } else {
+                                path_for_refresh = Some(path.clone());
                             }
                             Ok(())
                         }
@@ -575,6 +591,8 @@ impl RustyClient {
                         Ok(resp) => {
                             if let Some(etag) = resp.etag {
                                 new_etag_to_propagate = Some(etag);
+                            } else {
+                                path_for_refresh = Some(path.clone());
                             }
                             Ok(())
                         }
@@ -654,7 +672,10 @@ impl RustyClient {
                         } else {
                             format!("{}/{}", new_cal, filename)
                         };
-                        new_href_to_propagate = Some((task.href.clone(), new_href));
+                        new_href_to_propagate = Some((task.href.clone(), new_href.clone()));
+
+                        // Mark for refresh because MOVE does not return new ETag
+                        path_for_refresh = Some(strip_host(&new_href));
                         Ok(())
                     }
                     Err(e) => Err(e),
@@ -663,6 +684,15 @@ impl RustyClient {
 
             match result {
                 Ok(_) => {
+                    // --- FIX: Fetch ETag if needed ---
+                    if new_etag_to_propagate.is_none() {
+                        if let Some(path) = path_for_refresh {
+                            if let Some(fetched) = self.fetch_etag(&path).await {
+                                new_etag_to_propagate = Some(fetched);
+                            }
+                        }
+                    }
+
                     let commit_res = Journal::modify(|queue| {
                         if !queue.is_empty() {
                             queue.remove(0);
@@ -675,6 +705,7 @@ impl RustyClient {
                         if let Some(etag) = new_etag_to_propagate {
                             let target_uid = match &next_action {
                                 Action::Create(t) | Action::Update(t) => t.uid.clone(),
+                                Action::Move(t, _) => t.uid.clone(),
                                 _ => String::new(),
                             };
                             if !target_uid.is_empty() {
