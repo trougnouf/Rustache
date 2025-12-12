@@ -1,4 +1,5 @@
 // File: ./src/mobile.rs
+use crate::cache::Cache; // Added import
 use crate::client::RustyClient;
 use crate::config::Config;
 use crate::model::Task;
@@ -69,6 +70,7 @@ pub struct MobileTask {
     pub smart_string: String,
     pub depth: u32,
     pub is_blocked: bool,
+    pub status_string: String,
 }
 
 #[derive(uniffi::Record)]
@@ -100,6 +102,7 @@ pub struct MobileConfig {
 impl From<Task> for MobileTask {
     fn from(t: Task) -> Self {
         let smart = t.to_smart_string();
+        let status_str = format!("{:?}", t.status);
         Self {
             uid: t.uid,
             summary: t.summary,
@@ -116,11 +119,12 @@ impl From<Task> for MobileTask {
             smart_string: smart,
             depth: t.depth as u32,
             is_blocked: false,
+            status_string: status_str,
         }
     }
 }
 
-// --- 2. DEFINE THE MAIN OBJECT ---
+// --- MAIN OBJECT ---
 
 #[derive(uniffi::Object)]
 pub struct CfaitMobile {
@@ -128,7 +132,6 @@ pub struct CfaitMobile {
     store: Arc<Mutex<TaskStore>>,
 }
 
-// --- 3. IMPLEMENT THE EXPORTED API ---
 #[uniffi::export(async_runtime = "tokio")]
 impl CfaitMobile {
     #[uniffi::constructor]
@@ -146,6 +149,7 @@ impl CfaitMobile {
         }
     }
 
+    // (Preserve existing implementation)
     pub fn get_config(&self) -> MobileConfig {
         let c = Config::load().unwrap_or_default();
         MobileConfig {
@@ -205,11 +209,40 @@ impl CfaitMobile {
         config.save().map_err(MobileError::from)
     }
 
-    pub async fn load_and_connect(&self) -> Result<String, MobileError> {
+    // --- OPTIMIZED STARTUP ---
+
+    /// Reads tasks from disk (Local + Cache) into memory immediately.
+    /// This is synchronous and fast.
+    pub fn load_from_cache(&self) {
+        let mut store = self.store.blocking_lock();
+        store.clear();
+
+        // 1. Local
+        if let Ok(local) = LocalStorage::load() {
+            store.insert(LOCAL_CALENDAR_HREF.to_string(), local);
+        }
+
+        // 2. Cached Remote
+        if let Ok(cals) = Cache::load_calendars() {
+            for cal in cals {
+                if cal.href == LOCAL_CALENDAR_HREF {
+                    continue;
+                }
+                if let Ok((tasks, _)) = Cache::load(&cal.href) {
+                    store.insert(cal.href, tasks);
+                }
+            }
+        }
+    }
+
+    /// Performs the network synchronization.
+    /// Should be called after load_from_cache.
+    pub async fn sync(&self) -> Result<String, MobileError> {
         let config = Config::load().map_err(MobileError::from)?;
         self.apply_connection(config).await
     }
 
+    /// Used for testing settings login
     pub async fn connect(
         &self,
         url: String,
@@ -227,6 +260,7 @@ impl CfaitMobile {
         self.apply_connection(config).await
     }
 
+    // (Preserve existing implementation)
     pub fn get_calendars(&self) -> Vec<MobileCalendar> {
         let config = Config::load().unwrap_or_default();
         let mut result = Vec::new();
@@ -260,7 +294,6 @@ impl CfaitMobile {
     pub async fn get_all_tags(&self) -> Vec<MobileTag> {
         let store = self.store.lock().await;
         let config = Config::load().unwrap_or_default();
-
         let empty_includes = HashSet::new();
         let hidden_cals: HashSet<String> = config.hidden_calendars.into_iter().collect();
 
@@ -353,6 +386,63 @@ impl CfaitMobile {
         Ok(())
     }
 
+    // --- Actions ---
+
+    // NEW ACTIONS for Menu
+    pub async fn change_priority(&self, uid: String, delta: i8) -> Result<(), MobileError> {
+        self.modify_task_and_sync(uid, |t| {
+            // Logic duplicated from store.rs to keep `modify` generic simple
+            t.priority = if delta > 0 {
+                match t.priority {
+                    0 => 9,
+                    9 => 5,
+                    5 => 1,
+                    1 => 1,
+                    _ => 5,
+                }
+            } else {
+                match t.priority {
+                    1 => 5,
+                    5 => 9,
+                    9 => 0,
+                    0 => 0,
+                    _ => 0,
+                }
+            };
+        })
+        .await
+    }
+
+    pub async fn set_status_process(&self, uid: String) -> Result<(), MobileError> {
+        self.modify_task_and_sync(uid, |t| {
+            t.status = if t.status == crate::model::TaskStatus::InProcess {
+                crate::model::TaskStatus::NeedsAction
+            } else {
+                crate::model::TaskStatus::InProcess
+            };
+        })
+        .await
+    }
+
+    pub async fn set_status_cancelled(&self, uid: String) -> Result<(), MobileError> {
+        self.modify_task_and_sync(uid, |t| {
+            t.status = if t.status == crate::model::TaskStatus::Cancelled {
+                crate::model::TaskStatus::NeedsAction
+            } else {
+                crate::model::TaskStatus::Cancelled
+            };
+        })
+        .await
+    }
+
+    pub async fn yank_task(&self, uid: String) -> Result<(), MobileError> {
+        // In mobile, we might just return the ID for the clipboard,
+        // but currently Yank state is UI side in TUI/GUI.
+        // For Android, we'll just handle it in Kotlin by copying to clipboard.
+        Ok(())
+    }
+
+    // ... [update_task_smart, update_desc, toggle, move, delete... NO CHANGES] ...
     pub async fn update_task_smart(
         &self,
         uid: String,
@@ -389,11 +479,9 @@ impl CfaitMobile {
 
     pub async fn move_task(&self, uid: String, new_cal_href: String) -> Result<(), MobileError> {
         let mut store = self.store.lock().await;
-
         let updated_task = store
             .move_task(&uid, new_cal_href.clone())
             .ok_or(MobileError::from("Task not found"))?;
-
         let client_guard = self.client.lock().await;
         if let Some(client) = &*client_guard {
             client
@@ -401,9 +489,7 @@ impl CfaitMobile {
                 .await
                 .map_err(MobileError::from)?;
         } else {
-            return Err(MobileError::from(
-                "Cannot move task while client is not initialized",
-            ));
+            return Err(MobileError::from("Client offline"));
         }
         Ok(())
     }
@@ -413,7 +499,6 @@ impl CfaitMobile {
         let task = store
             .delete_task(&uid)
             .ok_or(MobileError::from("Task not found"))?;
-
         let client_guard = self.client.lock().await;
         if let Some(client) = &*client_guard {
             client.delete_task(&task).await.map_err(MobileError::from)?;
@@ -428,9 +513,10 @@ impl CfaitMobile {
     }
 }
 
-// --- 4. IMPLEMENT INTERNAL HELPERS ---
+// --- INTERNAL HELPERS ---
 impl CfaitMobile {
     async fn apply_connection(&self, config: Config) -> Result<String, MobileError> {
+        // 1. Initialize Client
         let (client, cals, tasks, active_href, warning) =
             RustyClient::connect_with_fallback(config)
                 .await
@@ -438,6 +524,7 @@ impl CfaitMobile {
 
         *self.client.lock().await = Some(client);
 
+        // 2. Populate Store with fresh data
         let mut store = self.store.lock().await;
         store.clear();
 
